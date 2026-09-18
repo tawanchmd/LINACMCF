@@ -1,0 +1,15 @@
+/* LINACMCF v5.0 production polish. Loaded after the v4.0b inline styles. */
+:root{--ink:#0b1220;--muted:#667085;--line:#e7eaf0;--surface:#fff;--soft:#f7f8fa;--accent:#2563eb;--shadow:0 10px 30px rgba(15,23,42,.055)}
+body{background:#f6f7f9;color:var(--ink);font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;letter-spacing:-.005em}
+.topbar{min-height:68px;padding:14px max(24px,5%);background:rgba(255,255,255,.96);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);align-items:center;box-shadow:0 1px 0 rgba(15,23,42,.02)}
+.topbar h1{font-size:20px;letter-spacing:-.035em;font-weight:760}.header-center-name{font-size:12px;color:#7b8494}.badge{background:#f2f4f7;color:#667085;border:1px solid #e4e7ec;font-size:11px;font-weight:650;padding:6px 9px}
+.app-nav{background:#101318;border-bottom:1px solid #232833;padding:8px max(20px,5%);gap:3px}.app-nav button{color:#aeb6c4;padding:9px 13px;font-weight:600;border-radius:6px;transition:.15s}.app-nav button:hover{background:#1b2029;color:#fff}.app-nav button.active{background:#fff;color:#101318;box-shadow:0 1px 5px #0002}
+.container{max-width:1320px;padding:28px 24px}.panel{border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:24px;margin:16px 0;background:var(--surface)}
+h2{letter-spacing:-.025em}h3{letter-spacing:-.015em}.page-note,.hint,.muted{color:var(--muted)}
+input,select,textarea{background:#fff;border:1px solid #d9dee7;border-radius:7px;padding:9px 10px;outline:none;transition:border .15s,box-shadow .15s}input:focus,select:focus,textarea:focus{border-color:#8aa9e8;box-shadow:0 0 0 3px rgba(37,99,235,.09)}
+button{font-weight:650;transition:transform .08s,background .15s,box-shadow .15s}button:active{transform:translateY(1px)}.primary{background:#111827;color:#fff;box-shadow:0 1px 2px #0002}.primary:hover{background:#252d3a}.secondary{background:#f3f4f6;color:#344054;border:1px solid #e1e5eb}.secondary:hover{background:#e9ecf1}
+.excel-card,.integrated-chart,.thai-map-card,.region-detail,.service-area-card{border-color:var(--line);border-radius:10px;box-shadow:none}.excel-head{background:#f5f6f8;color:#475467}.entry{background:#f8fbff}.calc{background:#f6f7f9}
+.kpis article,.result-strip div,.decision-card,.logistic-card,.insight{border-color:var(--line);border-radius:9px;box-shadow:none}.kpis strong,.result-strip strong,.decision-card strong,.logistic-card strong{font-variant-numeric:tabular-nums;letter-spacing:-.035em}
+.range-selector{background:#f3f4f6;padding:3px;border-radius:8px;width:max-content}.range-selector button{background:transparent;color:#667085}.range-selector button.active{background:#fff;color:#111827;box-shadow:0 1px 4px #0002}
+.auth-card{border-color:var(--line);border-radius:14px;box-shadow:0 18px 55px rgba(15,23,42,.08);padding:34px}.auth-actions article{border-color:var(--line);background:#fbfbfc}
+@media(max-width:700px){.badge{font-size:10px}.topbar h1{font-size:16px}.container{padding:12px}.panel{border-radius:10px}.app-nav{padding:7px 9px}}
