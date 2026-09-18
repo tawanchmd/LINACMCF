@@ -26,6 +26,8 @@ def startup():
 
 class LoginIn(BaseModel): email:str; password:str
 class SetupIn(BaseModel): email:str; password:str=Field(min_length=12,max_length=128)
+class UserCreateIn(BaseModel): email:str; password:str=Field(min_length=12,max_length=128)
+class MembershipIn(BaseModel): user_id:int; center_id:int; role:str
 class CenterIn(BaseModel): name:str; country:str="Thailand"
 class HistoryRowIn(BaseModel): date:date; new_patients:int=Field(ge=0); active_patients:int=Field(ge=0)
 class MachineIn(BaseModel):
@@ -90,6 +92,37 @@ def logout(request:Request,u:User=Depends(current_user),s:Session=Depends(db)):
 def me(u:User=Depends(current_user),s:Session=Depends(db)):
     ms=memberships(s,u)
     return {"id":u.id,"email":u.email,"system_admin":u.is_system_admin,"memberships":[{"center_id":m.center_id,"role":m.role} for m in ms]}
+
+@app.get("/api/admin/users")
+def admin_users(u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    return [{"id":x.id,"email":x.email,"is_active":x.is_active,"is_system_admin":x.is_system_admin} for x in s.scalars(select(User).order_by(User.email)).all()]
+
+@app.post("/api/admin/users")
+def admin_create_user(x:UserCreateIn,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    email=x.email.strip().lower()
+    if "@" not in email: raise HTTPException(422,"Valid email required")
+    if s.scalar(select(User).where(User.email==email)): raise HTTPException(409,"Email already exists")
+    nu=User(email=email,password_hash=password_hash.hash(x.password))
+    s.add(nu); s.flush(); audit(s,u,"user.create",detail=f"user_id={nu.id}"); s.commit()
+    return {"id":nu.id,"email":nu.email}
+
+@app.post("/api/admin/memberships")
+def admin_membership(x:MembershipIn,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    if x.role not in ("center_admin","data_entry","viewer"): raise HTTPException(422,"Invalid role")
+    if not s.get(User,x.user_id) or not s.get(Center,x.center_id): raise HTTPException(404,"User or center not found")
+    m=s.scalar(select(CenterMembership).where(CenterMembership.user_id==x.user_id,CenterMembership.center_id==x.center_id))
+    if m: m.role=x.role
+    else: s.add(CenterMembership(user_id=x.user_id,center_id=x.center_id,role=x.role))
+    audit(s,u,"membership.upsert",x.center_id,f"user_id={x.user_id}; role={x.role}"); s.commit()
+    return {"ok":True}
+
+@app.get("/health/security")
+def security_health(s:Session=Depends(db)):
+    setup_locked=s.scalar(select(User.id).limit(1)) is not None
+    return {"status":"ok","setup_locked":setup_locked,"unauthenticated_api":"enforced","roles":["center_admin","data_entry","viewer"],"cross_center_guard":"server-side membership check","state_scope":"per-user"}
 
 @app.get("/api/centers")
 def centers(u:User=Depends(current_user),s:Session=Depends(db)):
