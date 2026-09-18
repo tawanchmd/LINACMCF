@@ -12,7 +12,7 @@ from .db import Base, engine, SessionLocal
 from .models import Center, Machine, DailyHistory, AppState, User, CenterMembership, AuditLog
 
 app = FastAPI(title="LINAC Machine Carrying Capacity API", version="0.5.1")
-app.add_middleware(SessionMiddleware,secret_key=os.environ.get("SESSION_SECRET","dev-only-change-me"),https_only=os.environ.get("APP_ENV")=="production",same_site="lax",max_age=28800)
+app.add_middleware(SessionMiddleware,secret_key=os.environ.get("SESSION_SECRET") or __import__("hashlib").sha256((os.environ.get("DATABASE_URL","linacmcf-local")+"|session").encode()).hexdigest(),https_only=os.environ.get("APP_ENV")=="production",same_site="lax",max_age=28800)
 password_hash=PasswordHash.recommended()
 
 def db():
@@ -23,18 +23,9 @@ def db():
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(engine)
-    email=os.environ.get("BOOTSTRAP_ADMIN_EMAIL","").strip().lower()
-    pw=os.environ.get("BOOTSTRAP_ADMIN_PASSWORD","")
-    if email and pw:
-        s=SessionLocal()
-        try:
-            u=s.scalar(select(User).where(User.email==email))
-            if not u:
-                s.add(User(email=email,password_hash=password_hash.hash(pw),is_system_admin=True))
-                s.commit()
-        finally: s.close()
 
 class LoginIn(BaseModel): email:str; password:str
+class SetupIn(BaseModel): email:str; password:str=Field(min_length=12,max_length=128)
 class CenterIn(BaseModel): name:str; country:str="Thailand"
 class HistoryRowIn(BaseModel): date:date; new_patients:int=Field(ge=0); active_patients:int=Field(ge=0)
 class MachineIn(BaseModel):
@@ -68,6 +59,19 @@ def audit(s,u,action,center_id=None,detail=None):
 @app.get("/health")
 def health(s:Session=Depends(db)):
     s.execute(text("SELECT 1")); return {"status":"ok","database":"connected","ui":"v5.1","auth":"rbac","isolation":"per-user/per-center"}
+
+@app.get("/api/auth/setup-status")
+def setup_status(s:Session=Depends(db)):
+    return {"setup_required":s.scalar(select(User.id).limit(1)) is None}
+
+@app.post("/api/auth/setup")
+def setup_admin(x:SetupIn,request:Request,s:Session=Depends(db)):
+    if s.scalar(select(User.id).limit(1)) is not None: raise HTTPException(409,"Setup already completed")
+    email=x.email.strip().lower()
+    if "@" not in email: raise HTTPException(422,"Valid email required")
+    u=User(email=email,password_hash=password_hash.hash(x.password),is_system_admin=True)
+    s.add(u); s.flush(); audit(s,u,"system.bootstrap"); s.commit(); request.session["uid"]=u.id
+    return {"ok":True,"user":{"id":u.id,"email":u.email,"system_admin":True}}
 
 @app.post("/api/auth/login")
 def login(x:LoginIn,request:Request,s:Session=Depends(db)):
