@@ -25,7 +25,7 @@
 <body><div id="serverAuthGate" style="position:fixed;inset:0;z-index:100000;background:#f5f7fb;display:none;align-items:center;justify-content:center;padding:20px">
 <div style="width:min(460px,100%);background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:28px;box-shadow:0 18px 50px #0f172a1f">
 <div style="text-align:center;margin-bottom:18px"><img src="/static/curantix-medical.png" alt="Curantix Medical" style="height:100px;max-width:300px;object-fit:contain"></div>
-<h2 style="margin:0 0 6px">LINACMCF v5.1 Production</h2><p class="hint">Secure account login • Center-isolated workspace</p>
+<h2 id="serverAuthTitle" style="margin:0 0 6px">LINACMCF v5.1 Production</h2><p id="serverAuthHint" class="hint">Secure account login • Center-isolated workspace</p>
 <form id="serverLoginForm"><label>Email<input id="serverEmail" type="email" autocomplete="username" required></label><label style="margin-top:10px">Password<input id="serverPassword" type="password" autocomplete="current-password" required></label><button class="primary" style="width:100%;margin-top:16px" type="submit">Sign in</button><div id="serverLoginMsg" class="hint" style="margin-top:10px"></div></form>
 </div></div><header class="topbar"><div><h1>LINAC Machine Carrying Capacity</h1><div id="headerCenterName" class="header-center-name">—</div></div><div class="brand-wrap"><img class="brand-logo" src="/static/curantix-medical.png" alt="Curantix Medical"></div></header><main class="container">
 <section id="authPage" class="auth-page"><div class="award-credit"><div class="award-name">THASTRO 2nd National Radiation Oncology Research and Innovation Award 2023</div><div class="award-title">Application of the mathematical model to managing the linear accelerator utilization, multicenter experience.</div><div class="award-authors">Tawan C., Kiattisak P., Nattapatch J., Phongphan C.</div></div><div class="auth-card"><h2>Radiotherapy Center Access</h2><p class="hint">เลือกก่อนว่าต้องการลงทะเบียนศูนย์ใหม่ หรือเข้าสู่ระบบ จากนั้นจึงกรอกชื่อศูนย์และ PIN</p><div class="auth-actions"><article><h3>ลงทะเบียนศูนย์ใหม่</h3><p class="hint">สร้าง Center workspace ใหม่และตั้ง PIN 6 หลัก</p><button id="showRegisterBtn" class="primary" onclick="document.getElementById('authForm').style.display='block';document.getElementById('authFormTitle').textContent='ลงทะเบียนศูนย์ใหม่';document.getElementById('authSubmitBtn').textContent='Create center';document.getElementById('resetPinBtn').style.display='none';document.getElementById('resetPinHelp').style.display='none';window.authMode='register';">Register new center</button></article><article><h3>เข้าสู่ระบบ</h3><p class="hint">สำหรับ Center ที่เคยลงทะเบียนใน browser prototype นี้แล้ว</p><button id="showLoginBtn" class="secondary" onclick="document.getElementById('authForm').style.display='block';document.getElementById('authFormTitle').textContent='เข้าสู่ระบบ';document.getElementById('authSubmitBtn').textContent='Login';document.getElementById('resetPinBtn').style.display='inline-block';document.getElementById('resetPinHelp').style.display='block';window.authMode='login';">Login to center</button></article></div><div id="authForm" style="display:none;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:18px"><h3 id="authFormTitle" style="margin-top:0"></h3><div class="grid3"><label>Center name<input id="landingCenter" list="centerList" placeholder="ชื่อศูนย์รังสีรักษา"></label><label>6-digit PIN<input id="landingPin" type="password" inputmode="numeric" maxlength="6" placeholder="••••••"></label></div><div style="display:flex;gap:8px;margin-top:12px"><button id="authSubmitBtn" class="primary">Continue</button><button id="authCancelBtn" class="secondary">Cancel</button><button id="resetPinBtn" class="secondary" style="display:none">Reset PIN (prototype)</button></div><div id="resetPinHelp" class="privacy-note" style="display:none;margin-top:8px">Prototype recovery only: resets the PIN for a Center stored in this browser without deleting Center, Machine, or historical data. This will be removed in production.</div></div><p class="privacy-note">Production version จะเปลี่ยนจาก browser PIN เป็น server-side user account + role-based authorization.</p></div></section></main>
@@ -654,6 +654,7 @@ document.addEventListener('click',function(e){
 </script><script>
 (function(){
  window.serverAuthenticated=false;
+ let setupRequired=false;
  async function checkAuth(){
   try{
    const r=await fetch('/api/auth/me',{credentials:'same-origin'});
@@ -663,7 +664,10 @@ document.addEventListener('click',function(e){
    if(typeof enterWorkspace==='function') enterWorkspace('centerPage');
    return true;
   }catch(e){
+   try{const sr=await fetch('/api/auth/setup-status');if(sr.ok){const sj=await sr.json();setupRequired=!!sj.setup_required}}catch(_){}
    const gate=document.getElementById('serverAuthGate'); if(gate)gate.style.display='flex';
+   const title=document.getElementById('serverAuthTitle'),hint=document.getElementById('serverAuthHint');
+   if(setupRequired){if(title)title.textContent='Create first System Admin';if(hint)hint.textContent='One-time production setup • password must be at least 12 characters';}
    const old=document.getElementById('authPage'); if(old)old.style.display='none';
    const nav=document.getElementById('appNav'); if(nav)nav.style.display='none';
    const main=document.getElementById('appMain'); if(main)main.style.display='none';
@@ -677,8 +681,8 @@ document.addEventListener('click',function(e){
   if(form)form.addEventListener('submit',async function(e){
    e.preventDefault(); const msg=document.getElementById('serverLoginMsg'); msg.textContent='Signing in…';
    try{
-    const r=await fetch('/api/auth/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('serverEmail').value,password:document.getElementById('serverPassword').value})});
-    if(!r.ok){msg.textContent='Email or password is incorrect.';return}
+    const endpoint=setupRequired?'/api/auth/setup':'/api/auth/login'; const r=await fetch(endpoint,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('serverEmail').value,password:document.getElementById('serverPassword').value})});
+    if(!r.ok){const j=await r.json().catch(()=>({}));msg.textContent=j.detail||'Email or password is incorrect.';return}
     location.reload();
    }catch(err){msg.textContent='Server unavailable. Please try again.'}
   });
