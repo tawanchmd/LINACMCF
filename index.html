@@ -573,4 +573,59 @@ document.addEventListener('click',function(e){
   window.safeShowPage(b.dataset.page);
 },true);
 </script>
-</body></html>
+<script>
+/* Sprint B/C server bridge — preserves v4.0b browser workflow while adding durable server persistence. */
+(function(){
+  let syncTimer=null, syncing=false;
+  function snapshot(){
+    const histories={};
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(k&&k.startsWith('histDaily|')) histories[k]=localStorage.getItem(k);
+    }
+    return {centers:localStorage.getItem(CENTER_STORAGE),machines:localStorage.getItem(MACHINE_STORAGE),histories,version:'v5.0'};
+  }
+  async function pushState(){
+    if(syncing)return; syncing=true;
+    try{
+      const r=await fetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:snapshot()})});
+      if(r.ok&&$('backendStatus')) $('backendStatus').textContent='Connected • server persistence';
+    }catch(e){ if($('backendStatus')) $('backendStatus').textContent='Browser mode • server unavailable'; }
+    finally{syncing=false}
+  }
+  function queueSync(){clearTimeout(syncTimer);syncTimer=setTimeout(pushState,350)}
+  const oldPersist=persistStores; persistStores=function(){oldPersist();queueSync()};
+  const oldWrite=writeHistory; writeHistory=function(d){oldWrite(d);queueSync()};
+  async function bootstrap(){
+    try{
+      const r=await fetch('/api/state'); if(!r.ok)return;
+      const j=await r.json(), p=j.payload;
+      const localHas=!!localStorage.getItem(CENTER_STORAGE)||!!localStorage.getItem(MACHINE_STORAGE);
+      const serverHas=!!(p&&(p.centers||p.machines||Object.keys(p.histories||{}).length));
+      if(!localHas&&serverHas&&!sessionStorage.getItem('v5hydrated')){
+        if(p.centers)localStorage.setItem(CENTER_STORAGE,p.centers);
+        if(p.machines)localStorage.setItem(MACHINE_STORAGE,p.machines);
+        Object.entries(p.histories||{}).forEach(([k,v])=>localStorage.setItem(k,v));
+        sessionStorage.setItem('v5hydrated','1'); location.reload(); return;
+      }
+      if(localHas&&!serverHas) queueSync();
+      if($('backendStatus')) $('backendStatus').textContent='Connected • server persistence';
+    }catch(e){}
+  }
+  const browserForecast=runForecastAnalysis;
+  async function runHybridForecast(){
+    await browserForecast();
+    try{
+      const g=getSeries(), y=g.y||[]; if(y.length<6)return;
+      const h=+$('forecastHorizon').value||20, sm=$('seasonalityMode')?.value||'auto';
+      const r=await fetch('/api/forecast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({series:y,horizon:h,seasonality:sm})});
+      if(!r.ok)return; const z=await r.json();
+      if($('backendStatus')) $('backendStatus').textContent='Connected • persistence + forecast API';
+      const box=$('modelTable');
+      if(box) box.insertAdjacentHTML('beforeend', '<div class="insight" style="margin-top:8px"><strong>Server validation</strong> '+z.winner+' • rolling-origin MAE '+Number(z.validation[0].mae).toFixed(2)+' • confidence '+Math.round(100*z.confidence)+'%</div>');
+    }catch(e){}
+  }
+  if($('forecastBtn')) $('forecastBtn').onclick=runHybridForecast;
+  window.addEventListener('load',bootstrap);
+})();
+</script></body></html>
