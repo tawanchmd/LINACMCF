@@ -2,7 +2,7 @@ from fastapi import FastAPI,Depends,HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel,Field
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, text
 from .db import Base,engine,SessionLocal
 from .models import Center,Machine,DailyHistory
 
@@ -14,7 +14,7 @@ def db():
  try: yield s
  finally: s.close()
 class CenterIn(BaseModel): name:str; country:str="Thailand"
-class MachineIn(BaseModel):
+class HistoryRowIn(BaseModel):\n date: __import__('datetime').date\n new_patients: int = Field(ge=0)\n active_patients: int = Field(ge=0)\n\nclass MachineIn(BaseModel):
  center_id:int; name:str; model:str|None=None; operating_minutes:float|None=None; idle_minutes:float|None=None; imrt_proportion:float|None=Field(None,ge=0,le=1); imrt_cycle_minutes:float|None=None; d3_cycle_minutes:float|None=None; staff_efficacy:float|None=Field(None,ge=0,le=1); avg_course_fractions:float|None=None; working_days:int|None=None; linac_capacity_allowance:float|None=Field(None,ge=0,le=1)
 @app.get("/health")
 def health(): return {"status":"ok","database":"configured","ui":"v5-ready"}
