@@ -116,7 +116,7 @@ def me(u:User=Depends(current_user),s:Session=Depends(db)):
     p=s.scalar(select(UserProfile).where(UserProfile.user_id==u.id))
     req=s.scalar(select(AccessRequest).where(AccessRequest.user_id==u.id,AccessRequest.status=="pending").order_by(AccessRequest.created_at.desc()))
     return {"id":u.id,"email":u.email,"full_name":p.full_name if p else None,"system_admin":u.is_system_admin,
-            "memberships":[{"center_id":m.center_id,"role":m.role} for m in ms],
+            "memberships":[{"center_id":m.center_id,"center_name":(s.get(Center,m.center_id).name if s.get(Center,m.center_id) else None),"role":m.role} for m in ms],
             "onboarding_required":(not u.is_system_admin and len(ms)==0),
             "access_request":{"id":req.id,"type":req.request_type,"status":req.status,"center_id":req.center_id,"center_name":req.requested_center_name} if req else None}
 
