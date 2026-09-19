@@ -99,11 +99,24 @@ function centerServicePopulation(c){if(c?.serviceArea?.country==='Other')return 
 function renderProvincePicker(){let box=$('thaiProvincePicker');if(!box)return;box.innerHTML=THAI_PROVINCES.map(p=>`<label><input type="checkbox" value="${p[0]}"><span>${p[1]} <small class="muted">${p[0]}</small></span></label>`).join('')}
 let THAI_PROVINCE_ADJACENCY={};
 function buildThaiProvinceAdjacency(gj){
- const vertexOwners=new Map(), adj={}; THAI_PROVINCES.forEach(p=>adj[p[0]]=new Set());
- const walk=(coords,out)=>{if(!Array.isArray(coords))return;if(typeof coords[0]==='number'&&typeof coords[1]==='number'){out.add(coords[0].toFixed(5)+','+coords[1].toFixed(5));return}coords.forEach(x=>walk(x,out))};
- (gj?.features||[]).forEach(f=>{const info=matchProvinceInfo(geoProvinceName(f.properties||{}),f.properties||{});if(!info)return;const vs=new Set();walk(f.geometry?.coordinates,vs);vs.forEach(v=>{if(!vertexOwners.has(v))vertexOwners.set(v,[]);vertexOwners.get(v).push(info.en)})});
- const pairCount=new Map();vertexOwners.forEach(os=>{const a=[...new Set(os)];for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++){const k=[a[i],a[j]].sort().join('|');pairCount.set(k,(pairCount.get(k)||0)+1)}});
- pairCount.forEach((n,k)=>{if(n<2)return;const [a,b]=k.split('|');adj[a]?.add(b);adj[b]?.add(a)});
+ const adj={}; THAI_PROVINCES.forEach(p=>adj[p[0]]=new Set());
+ const segs=[];
+ const ringsOf=g=>g?.type==='Polygon'?g.coordinates:(g?.type==='MultiPolygon'?g.coordinates.flat():[]);
+ (gj?.features||[]).forEach(f=>{
+   const info=matchProvinceInfo(geoProvinceName(f.properties||{}),f.properties||{});if(!info)return;
+   const ss=[];
+   ringsOf(f.geometry).forEach(ring=>{for(let i=1;i<ring.length;i++)ss.push([ring[i-1],ring[i]])});
+   segs.push({name:info.en,segs:ss});
+ });
+ const d2=(a,b)=>{const x=a[0]-b[0],y=a[1]-b[1];return x*x+y*y};
+ const ptSeg=(p,a,b)=>{const vx=b[0]-a[0],vy=b[1]-a[1],wx=p[0]-a[0],wy=p[1]-a[1],vv=vx*vx+vy*vy||1;let t=(wx*vx+wy*vy)/vv;t=Math.max(0,Math.min(1,t));return d2(p,[a[0]+t*vx,a[1]+t*vy])};
+ const segDist=(s,t)=>Math.min(ptSeg(s[0],t[0],t[1]),ptSeg(s[1],t[0],t[1]),ptSeg(t[0],s[0],s[1]),ptSeg(t[1],s[0],s[1]));
+ const tol2=.002*.002;
+ for(let i=0;i<segs.length;i++)for(let j=i+1;j<segs.length;j++){
+   let touches=false,hits=0;
+   outer:for(const a of segs[i].segs)for(const b of segs[j].segs){if(segDist(a,b)<=tol2&&++hits>=2){touches=true;break outer}}
+   if(touches){adj[segs[i].name].add(segs[j].name);adj[segs[j].name].add(segs[i].name)}
+ }
  THAI_PROVINCE_ADJACENCY=Object.fromEntries(Object.entries(adj).map(([k,v])=>[k,[...v]])); refreshProvinceEligibility();
 }
 function refreshProvinceEligibility(){
