@@ -396,7 +396,7 @@ refreshMachineSelectV27();
         byId('centerSelect').value=name; byId('centerPin').value=pin;
         if(typeof resetCenterInputs==='function') resetCenterInputs();
         if(typeof updateAccessUi==='function') updateAccessUi();
-        if(typeof enterWorkspace==='function') enterWorkspace('centerPage');
+        if(typeof enterWorkspace==='function') enterWorkspace('centerPage'); setTimeout(()=>window.updateIdentityHeader&&window.updateIdentityHeader(),0);
         else {byId('authPage').style.display='none';byId('appNav').style.display='flex';byId('appMain').style.display='block';}
         return;
       }
@@ -662,6 +662,27 @@ document.addEventListener('click',function(e){
    const r=await fetch('/api/auth/me',{credentials:'same-origin'});
    if(!r.ok)throw new Error('unauthenticated');
    const me=await r.json(); window.serverAuthenticated=true; window.currentServerUser=me;
+   window.updateIdentityHeader=function(){
+    const el=document.getElementById('headerCenterName'); if(!el||!window.currentServerUser)return;
+    const u=window.currentServerUser;
+    let role='Viewer';
+    if(u.system_admin) role='System Admin';
+    else if(u.memberships&&u.memberships.length){
+      const roles=u.memberships.map(m=>m.role);
+      role=roles.includes('center_admin')?'Center Admin':roles.includes('data_entry')?'Data Entry':'Viewer';
+    }
+    let center='National / All Centers';
+    if(!u.system_admin){
+      const visible=(document.getElementById('centerName')?.value||document.getElementById('centerSelect')?.value||'').trim();
+      center=visible||((u.memberships&&u.memberships.length>1)?'Multiple Centers':'Assigned Center');
+    }else{
+      const visible=(document.getElementById('centerName')?.value||document.getElementById('centerSelect')?.value||'').trim();
+      if(visible)center=visible;
+    }
+    el.textContent=role+' · '+center;
+    el.title=(u.email||'')+' • '+role;
+   };
+   window.updateIdentityHeader();
    const gate=document.getElementById('serverAuthGate'); if(gate)gate.style.display='none';
    if(typeof enterWorkspace==='function') enterWorkspace('centerPage');
    return true;
