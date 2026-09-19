@@ -37,3 +37,22 @@ class AuditLog(Base):
  action:Mapped[str]=mapped_column(String(120),index=True)
  detail:Mapped[str|None]=mapped_column(Text)
  created_at:Mapped[datetime]=mapped_column(DateTime,server_default=func.now(),index=True)
+
+
+class UserProfile(Base):
+ __tablename__="user_profiles"
+ id:Mapped[int]=mapped_column(primary_key=True)
+ user_id:Mapped[int]=mapped_column(ForeignKey("users.id",ondelete="CASCADE"),unique=True,index=True)
+ full_name:Mapped[str]=mapped_column(String(180))
+ created_at:Mapped[datetime]=mapped_column(DateTime,server_default=func.now())
+
+class AccessRequest(Base):
+ __tablename__="access_requests"
+ id:Mapped[int]=mapped_column(primary_key=True)
+ user_id:Mapped[int]=mapped_column(ForeignKey("users.id",ondelete="CASCADE"),index=True)
+ request_type:Mapped[str]=mapped_column(String(32))
+ center_id:Mapped[int|None]=mapped_column(ForeignKey("centers.id",ondelete="SET NULL"),nullable=True,index=True)
+ requested_center_name:Mapped[str|None]=mapped_column(String(180),nullable=True)
+ requested_country:Mapped[str|None]=mapped_column(String(80),nullable=True)
+ status:Mapped[str]=mapped_column(String(32),default="pending",index=True)
+ created_at:Mapped[datetime]=mapped_column(DateTime,server_default=func.now())
