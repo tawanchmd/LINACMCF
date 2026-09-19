@@ -220,8 +220,8 @@ renderCalendar();updateTrackerQa();
 let lastForecast=[];let lastLower=[];let lastUpper=[];let lastSeries=[];let lastDates=[];let lastBest='';let lastForecastResult=null;
 function updateHorizonUi(){let h=Math.max(1,+$('forecastHorizon').value||65),p=$('forecastHorizonPreset')?.value||'custom',tag=p==='22'?'1 month':p==='65'?'3 months':p==='130'?'6 months':'custom';$('forecastHorizonLabel').value=`${tag} · ${h} working days`;}
 function resolveSeasonality(y,validationMode){let sm=$('seasonalityMode')?.value||'auto';if(sm==='none')return {mode:sm,period:1,label:'None'};if(sm==='weekly')return {mode:sm,period:5,label:'Weekly (5 working days)'};if(sm==='annual')return {mode:sm,period:260,label:'Annual / calendar (~260 working days)'};let candidates=[{period:1,label:'None'},{period:5,label:'Weekly'}];if(y.length>=390)candidates.push({period:260,label:'Annual / calendar'});let scored=candidates.map(c=>{if(c.period===1)return {...c,score:validation(y,'naive',1,validationMode).mae};if(y.length<=c.period+3)return {...c,score:Infinity};return {...c,score:validation(y,'seasonal',c.period,validationMode).mae}}).sort((a,b)=>a.score-b.score);let b=scored[0];return {mode:'auto',period:b.period,label:`Auto → ${b.label}`};}
-async function runBackendForecast(y,h,season,mode,preset,K){let resp=await fetch('http://127.0.0.1:8000/forecast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({series:y,horizon:h,seasonality:season,validation_mode:mode,model_preset:preset,capacity_k:K})});if(!resp.ok)throw new Error('backend '+resp.status);return await resp.json()}
-async function checkBackend(){try{let r=await fetch('http://127.0.0.1:8000/health');if(!r.ok)throw 0;let z=await r.json();$('backendStatus').value='Python backend ready'+(z.xgboost?' + XGBoost':'')}catch(e){$('backendStatus').value='Browser baseline mode'}}
+async function runBackendForecast(y,h,season,mode,preset,K){let resp=await fetch('/api/forecast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({series:y,horizon:h,seasonality:season,validation_mode:mode,model_preset:preset,capacity_k:K})});if(!resp.ok)throw new Error('backend '+resp.status);return await resp.json()}
+async function checkBackend(){try{let r=await fetch('/health');if(!r.ok)throw 0;let z=await r.json();$('backendStatus').value='Python backend ready'+(z.xgboost?' + XGBoost':'')}catch(e){$('backendStatus').value='Browser baseline mode'}}
 async function runForecastAnalysis(){
  const g=getSeries(),y=g.y,dates=g.data.map(r=>r.date),h=Math.max(1,+$('forecastHorizon').value||65),mode=$('validationMode').value,preset=$('modelPreset').value,m=calc(),K=effectiveTargetCeiling(g.target,'daily',m),seasonInfo=resolveSeasonality(y,mode),season=seasonInfo.period;
  if(y.length<4){alert('ต้องมี historical data อย่างน้อย 4 working days');return}
@@ -609,6 +609,7 @@ document.addEventListener('click',function(e){
     return {centers:localStorage.getItem(CENTER_STORAGE),machines:localStorage.getItem(MACHINE_STORAGE),histories,version:'v5.0'};
   }
   async function pushState(){
+    if(!window.serverAuthenticated)return;
     if(syncing)return; syncing=true;
     try{
       const r=await fetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:snapshot()})});
@@ -620,6 +621,7 @@ document.addEventListener('click',function(e){
   const oldPersist=persistStores; persistStores=function(){oldPersist();queueSync()};
   const oldWrite=writeHistory; writeHistory=function(d){oldWrite(d);queueSync()};
   async function bootstrap(){
+    if(!window.serverAuthenticated)return;
     try{
       const r=await fetch('/api/state'); if(!r.ok)return;
       const j=await r.json(), p=j.payload;
