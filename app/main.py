@@ -200,6 +200,14 @@ def admin_approve_access(request_id:int,u:User=Depends(current_user),s:Session=D
     r.status="approved"; audit(s,u,"access.approve",center_id,f"request_id={r.id}; user_id={r.user_id}"); s.commit()
     return {"ok":True,"center_id":center_id,"role":"center_admin" if r.request_type=="new_center" else "viewer"}
 
+@app.post("/api/admin/access-requests/{request_id}/reject")
+def admin_reject_access(request_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    r=s.get(AccessRequest,request_id)
+    if not r or r.status!="pending": raise HTTPException(404,"Pending request not found")
+    r.status="rejected"; audit(s,u,"access.reject",r.center_id,f"request_id={r.id}; user_id={r.user_id}"); s.commit()
+    return {"ok":True,"status":"rejected"}
+
 @app.get("/health/security")
 def security_health(s:Session=Depends(db)):
     setup_locked=s.scalar(select(User.id).limit(1)) is not None
