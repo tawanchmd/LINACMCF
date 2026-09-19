@@ -28,6 +28,7 @@ class LoginIn(BaseModel): email:str; password:str
 class SetupIn(BaseModel): email:str; password:str=Field(min_length=12,max_length=128)
 class UserCreateIn(BaseModel): email:str; password:str=Field(min_length=12,max_length=128)
 class MembershipIn(BaseModel): user_id:int; center_id:int; role:str
+class PasswordChangeIn(BaseModel): current_password:str; new_password:str=Field(min_length=12,max_length=128)
 class CenterIn(BaseModel): name:str; country:str="Thailand"
 class HistoryRowIn(BaseModel): date:date; new_patients:int=Field(ge=0); active_patients:int=Field(ge=0)
 class MachineIn(BaseModel):
@@ -92,6 +93,12 @@ def logout(request:Request,u:User=Depends(current_user),s:Session=Depends(db)):
 def me(u:User=Depends(current_user),s:Session=Depends(db)):
     ms=memberships(s,u)
     return {"id":u.id,"email":u.email,"system_admin":u.is_system_admin,"memberships":[{"center_id":m.center_id,"role":m.role} for m in ms]}
+
+@app.post("/api/auth/change-password")
+def change_password(x:PasswordChangeIn,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not password_hash.verify(x.current_password,u.password_hash): raise HTTPException(401,"Current password is incorrect")
+    u.password_hash=password_hash.hash(x.new_password); audit(s,u,"password.change"); s.commit()
+    return {"ok":True}
 
 @app.get("/api/admin/users")
 def admin_users(u:User=Depends(current_user),s:Session=Depends(db)):
