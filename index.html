@@ -375,7 +375,11 @@ async function initThailandGeoMap(){let host=$('thailandGeoMap');if(!host||thail
 
 
 function showAppPage(id){document.querySelectorAll('.app-page').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('#appNav button').forEach(x=>x.classList.toggle('active',x.dataset.page===id));window.scrollTo({top:0,behavior:'instant'});if(id==='forecastPage'){setTimeout(()=>{renderCalendar();updateDashboard()},20)}if(id==='countryPage')setTimeout(()=>{updateNationalDashboard();initThailandGeoMap();setTimeout(()=>{thailandLeafletMap?.invalidateSize();restyleThailandMap()},120)},20);if(id==='centerPage')setTimeout(loadServiceArea,20)}
-document.querySelectorAll('#appNav button').forEach(b=>b.onclick=()=>showAppPage(b.dataset.page));
+document.querySelectorAll('#appNav button[data-page]').forEach(b=>b.onclick=()=>showAppPage(b.dataset.page));
+// Admin Requests is an action button, not a page-navigation button.
+// Keep its explicit openAdminRequests handler instead of overwriting it with showAppPage(undefined).
+const adminReqNavBtn=document.getElementById('adminRequestsBtn');
+if(adminReqNavBtn)adminReqNavBtn.onclick=()=>window.openAdminRequests&&window.openAdminRequests();
 function enterWorkspace(page='centerPage'){document.getElementById('authPage').style.display='none';document.getElementById('appNav').style.display='flex';document.getElementById('appMain').style.display='block';showAppPage(page)}
 var authMode=window.authMode||null;
 function openAuthForm(mode){
