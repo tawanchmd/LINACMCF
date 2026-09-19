@@ -9,7 +9,7 @@ from sqlalchemy import select, text
 from starlette.middleware.sessions import SessionMiddleware
 from pwdlib import PasswordHash
 from .db import Base, engine, SessionLocal
-from .models import Center, Machine, DailyHistory, AppState, User, CenterMembership, AuditLog
+from .models import Center, Machine, DailyHistory, AppState, User, CenterMembership, AuditLog, UserProfile, AccessRequest
 
 app = FastAPI(title="LINAC Machine Carrying Capacity API", version="0.5.1")
 app.add_middleware(SessionMiddleware,secret_key=os.environ.get("SESSION_SECRET") or __import__("hashlib").sha256((os.environ.get("DATABASE_URL","linacmcf-local")+"|session").encode()).hexdigest(),https_only=os.environ.get("APP_ENV")=="production",same_site="lax",max_age=28800)
@@ -25,6 +25,8 @@ def startup():
     Base.metadata.create_all(engine)
 
 class LoginIn(BaseModel): email:str; password:str
+class SignupIn(BaseModel): full_name:str=Field(min_length=2,max_length=180); email:str; password:str=Field(min_length=12,max_length=128)
+class AccessRequestIn(BaseModel): request_type:str; center_id:int|None=None; center_name:str|None=Field(None,max_length=180); country:str="Thailand"
 class SetupIn(BaseModel): email:str; password:str=Field(min_length=12,max_length=128)
 class UserCreateIn(BaseModel): email:str; password:str=Field(min_length=12,max_length=128)
 class MembershipIn(BaseModel): user_id:int; center_id:int; role:str
@@ -83,6 +85,18 @@ def setup_admin(x:SetupIn,request:Request,s:Session=Depends(db)):
     s.add(u); s.flush(); audit(s,u,"system.bootstrap"); s.commit(); request.session["uid"]=u.id
     return {"ok":True,"user":{"id":u.id,"email":u.email,"system_admin":True}}
 
+@app.post("/api/auth/signup")
+def signup(x:SignupIn,request:Request,s:Session=Depends(db)):
+    email=x.email.strip().lower(); full_name=x.full_name.strip()
+    if "@" not in email: raise HTTPException(422,"Valid email required")
+    if len(full_name)<2: raise HTTPException(422,"Full name required")
+    if s.scalar(select(User).where(User.email==email)): raise HTTPException(409,"Email already exists")
+    u=User(email=email,password_hash=password_hash.hash(x.password),is_system_admin=False,is_active=True)
+    s.add(u); s.flush(); s.add(UserProfile(user_id=u.id,full_name=full_name))
+    audit(s,u,"user.signup",detail=f"full_name={full_name}"); s.commit()
+    request.session.clear(); request.session["uid"]=u.id
+    return {"ok":True,"user":{"id":u.id,"email":u.email,"system_admin":False,"onboarding_required":True}}
+
 @app.post("/api/auth/login")
 def login(x:LoginIn,request:Request,s:Session=Depends(db)):
     u=s.scalar(select(User).where(User.email==x.email.strip().lower()))
@@ -99,7 +113,12 @@ def logout(request:Request,u:User=Depends(current_user),s:Session=Depends(db)):
 @app.get("/api/auth/me")
 def me(u:User=Depends(current_user),s:Session=Depends(db)):
     ms=memberships(s,u)
-    return {"id":u.id,"email":u.email,"system_admin":u.is_system_admin,"memberships":[{"center_id":m.center_id,"role":m.role} for m in ms]}
+    p=s.scalar(select(UserProfile).where(UserProfile.user_id==u.id))
+    req=s.scalar(select(AccessRequest).where(AccessRequest.user_id==u.id,AccessRequest.status=="pending").order_by(AccessRequest.created_at.desc()))
+    return {"id":u.id,"email":u.email,"full_name":p.full_name if p else None,"system_admin":u.is_system_admin,
+            "memberships":[{"center_id":m.center_id,"center_name":(s.get(Center,m.center_id).name if s.get(Center,m.center_id) else None),"role":m.role} for m in ms],
+            "onboarding_required":(not u.is_system_admin and len(ms)==0),
+            "access_request":{"id":req.id,"type":req.request_type,"status":req.status,"center_id":req.center_id,"center_name":req.requested_center_name} if req else None}
 
 @app.post("/api/auth/change-password")
 def change_password(x:PasswordChangeIn,u:User=Depends(current_user),s:Session=Depends(db)):
@@ -132,6 +151,62 @@ def admin_membership(x:MembershipIn,u:User=Depends(current_user),s:Session=Depen
     else: s.add(CenterMembership(user_id=x.user_id,center_id=x.center_id,role=x.role))
     audit(s,u,"membership.upsert",x.center_id,f"user_id={x.user_id}; role={x.role}"); s.commit()
     return {"ok":True}
+
+@app.get("/api/onboarding/centers")
+def onboarding_centers(u:User=Depends(current_user),s:Session=Depends(db)):
+    return [{"id":c.id,"name":c.name,"country":c.country} for c in s.scalars(select(Center).order_by(Center.name)).all()]
+
+@app.post("/api/onboarding/request")
+def onboarding_request(x:AccessRequestIn,u:User=Depends(current_user),s:Session=Depends(db)):
+    if u.is_system_admin or memberships(s,u): raise HTTPException(409,"Account already has center access")
+    if s.scalar(select(AccessRequest).where(AccessRequest.user_id==u.id,AccessRequest.status=="pending")):
+        raise HTTPException(409,"A request is already pending")
+    if x.request_type not in ("new_center","join_center"): raise HTTPException(422,"Invalid request type")
+    center_id=None; center_name=None
+    if x.request_type=="join_center":
+        if not x.center_id or not s.get(Center,x.center_id): raise HTTPException(404,"Center not found")
+        center_id=x.center_id
+    else:
+        center_name=(x.center_name or "").strip()
+        if len(center_name)<2: raise HTTPException(422,"Center name required")
+    r=AccessRequest(user_id=u.id,request_type=x.request_type,center_id=center_id,requested_center_name=center_name,requested_country=x.country,status="pending")
+    s.add(r); s.flush(); audit(s,u,"access.request",center_id,f"type={x.request_type}; request_id={r.id}; center_name={center_name or ''}"); s.commit()
+    return {"ok":True,"request_id":r.id,"status":"pending"}
+
+@app.get("/api/admin/access-requests")
+def admin_access_requests(u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    rows=s.scalars(select(AccessRequest).where(AccessRequest.status=="pending").order_by(AccessRequest.created_at)).all()
+    out=[]
+    for r in rows:
+        ru=s.get(User,r.user_id); p=s.scalar(select(UserProfile).where(UserProfile.user_id==r.user_id))
+        out.append({"id":r.id,"user_id":r.user_id,"full_name":p.full_name if p else None,"email":ru.email if ru else None,
+                    "type":r.request_type,"center_id":r.center_id,"center_name":r.requested_center_name,"country":r.requested_country,"status":r.status})
+    return out
+
+@app.post("/api/admin/access-requests/{request_id}/approve")
+def admin_approve_access(request_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    r=s.get(AccessRequest,request_id)
+    if not r or r.status!="pending": raise HTTPException(404,"Pending request not found")
+    if r.request_type=="new_center":
+        name=(r.requested_center_name or "").strip()
+        if s.scalar(select(Center).where(Center.name==name)): raise HTTPException(409,"Center name already exists")
+        center=Center(name=name,country=r.requested_country or "Thailand"); s.add(center); s.flush(); center_id=center.id
+    else:
+        center_id=r.center_id
+        if not center_id or not s.get(Center,center_id): raise HTTPException(404,"Center not found")
+    s.add(CenterMembership(user_id=r.user_id,center_id=center_id,role="center_admin" if r.request_type=="new_center" else "viewer"))
+    r.status="approved"; audit(s,u,"access.approve",center_id,f"request_id={r.id}; user_id={r.user_id}"); s.commit()
+    return {"ok":True,"center_id":center_id,"role":"center_admin" if r.request_type=="new_center" else "viewer"}
+
+@app.post("/api/admin/access-requests/{request_id}/reject")
+def admin_reject_access(request_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    r=s.get(AccessRequest,request_id)
+    if not r or r.status!="pending": raise HTTPException(404,"Pending request not found")
+    r.status="rejected"; audit(s,u,"access.reject",r.center_id,f"request_id={r.id}; user_id={r.user_id}"); s.commit()
+    return {"ok":True,"status":"rejected"}
 
 @app.get("/health/security")
 def security_health(s:Session=Depends(db)):
