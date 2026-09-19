@@ -50,11 +50,18 @@ def current_user(request:Request,s:Session=Depends(db)):
 def memberships(s,u):
     return s.scalars(select(CenterMembership).where(CenterMembership.user_id==u.id)).all()
 
-def can_center(s,u,center_id,write=False):
-    if u.is_system_admin: return True
+def center_role(s,u,center_id):
+    if u.is_system_admin: return "system_admin"
     m=s.scalar(select(CenterMembership).where(CenterMembership.user_id==u.id,CenterMembership.center_id==center_id))
-    if not m: return False
-    return (m.role in ("center_admin","data_entry")) if write else True
+    return m.role if m else None
+
+def can_center(s,u,center_id,action="read"):
+    role=center_role(s,u,center_id)
+    if role=="system_admin": return True
+    if action=="read": return role in ("center_admin","data_entry","viewer")
+    if action=="history_write": return role in ("center_admin","data_entry")
+    if action=="admin_write": return role=="center_admin"
+    return False
 
 def audit(s,u,action,center_id=None,detail=None):
     s.add(AuditLog(user_id=u.id if u else None,center_id=center_id,action=action,detail=detail))
@@ -152,13 +159,13 @@ def machines(center_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
 @app.post("/api/machines")
 def create_machine(x:MachineIn,u:User=Depends(current_user),s:Session=Depends(db)):
     if not s.get(Center,x.center_id): raise HTTPException(404,"Center not found")
-    if not can_center(s,u,x.center_id,True): raise HTTPException(403,"Write access denied")
+    if not can_center(s,u,x.center_id,"admin_write"): raise HTTPException(403,"Center Admin access required")
     m=Machine(**x.model_dump()); s.add(m); audit(s,u,"machine.create",x.center_id,x.name); s.commit(); s.refresh(m); return m
 
-def machine_for_user(s,u,machine_id,write=False):
+def machine_for_user(s,u,machine_id,action="read"):
     m=s.get(Machine,machine_id)
     if not m: raise HTTPException(404,"Machine not found")
-    if not can_center(s,u,m.center_id,write): raise HTTPException(403,"Center access denied")
+    if not can_center(s,u,m.center_id,action): raise HTTPException(403,"Center access denied")
     return m
 
 @app.get("/api/machines/{machine_id}/history")
@@ -168,7 +175,7 @@ def history(machine_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
 
 @app.put("/api/machines/{machine_id}/history")
 def save_history(machine_id:int,rows:list[HistoryRowIn],u:User=Depends(current_user),s:Session=Depends(db)):
-    m=machine_for_user(s,u,machine_id,True)
+    m=machine_for_user(s,u,machine_id,"history_write")
     for x in rows:
         h=s.scalar(select(DailyHistory).where(DailyHistory.machine_id==machine_id,DailyHistory.date==x.date))
         if h: h.new_patients=x.new_patients; h.active_patients=x.active_patients
