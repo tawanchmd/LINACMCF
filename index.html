@@ -134,6 +134,17 @@ function updateServiceAreaUi(save=false){let country=$('centerCountry')?.value||
 function saveServiceArea(){let ck=centerKey($('centerSelect').value.trim());if(!ck||!centers[ck]||!centerIsUnlocked(ck))return;let country=$('centerCountry').value;centers[ck].serviceArea={country,provinces:country==='Thailand'?selectedThaiProvinces():[],foreignAreas:country==='Other'?$('foreignAreas').value.split(/\n+/).map(x=>x.trim()).filter(Boolean):[],foreignPopulation:country==='Other'?(+$('foreignPopulation').value||0):0,populationReference:country==='Thailand'?'2024-12':'user-provided'};centers[ck].population=centers[ck].population||{};centers[ck].population.population=centerServicePopulation(centers[ck]);centers[ck].updatedAt=new Date().toISOString();persistStores();updateNationalDashboard();restyleThailandMap()}
 function loadServiceArea(){let ck=centerKey($('centerSelect').value.trim()),c=centers[ck],sa=c?.serviceArea||{};$('centerCountry').value=sa.country||'Thailand';document.querySelectorAll('#thaiProvincePicker input').forEach(x=>x.checked=(sa.provinces||[]).includes(x.value));$('foreignAreas').value=(sa.foreignAreas||[]).join('\n');$('foreignPopulation').value=sa.foreignPopulation||'';updateServiceAreaUi(false);refreshProvinceEligibility()}
 renderProvincePicker();refreshProvinceEligibility();
+// Preload province topology independently of the Country map.
+// Until adjacency is ready, keep the first-selection UI usable; buildThaiProvinceAdjacency()
+// will immediately refresh eligibility when the 77-province boundaries finish loading.
+let thailandAdjacencyPromise=null;
+function ensureThailandAdjacency(){
+ if(Object.keys(THAI_PROVINCE_ADJACENCY).some(k=>(THAI_PROVINCE_ADJACENCY[k]||[]).length))return Promise.resolve(THAI_PROVINCE_ADJACENCY);
+ if(thailandAdjacencyPromise)return thailandAdjacencyPromise;
+ thailandAdjacencyPromise=fetch(TH_GEOJSON_URL).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(gj=>{buildThaiProvinceAdjacency(gj);return THAI_PROVINCE_ADJACENCY}).catch(e=>{thailandAdjacencyPromise=null;console.warn('province adjacency preload',e);return THAI_PROVINCE_ADJACENCY});
+ return thailandAdjacencyPromise;
+}
+setTimeout(()=>ensureThailandAdjacency(),0);
 $('centerCountry')?.addEventListener('change',()=>updateServiceAreaUi(true));
 $('thaiProvincePicker')?.addEventListener('change',(e)=>{if(enforceProvinceContiguity(e))updateServiceAreaUi(true)});
 $('foreignAreas')?.addEventListener('change',()=>updateServiceAreaUi(true));
