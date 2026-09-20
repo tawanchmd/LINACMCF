@@ -181,11 +181,8 @@ const machineDefs=[
 function makeRow([name,id,unit,desc,input]){const pct=['allow','imrt','crt','eff'].includes(id);return `<div class="excel-row"><div>${name}</div><div><input id="${id}" class="${input?'entry':'calc'}" ${input?'':'readonly'} ${pct?'type="number" min="0" max="100" step="1"':''}></div><div>${pct?'%':unit}</div><div>${desc}</div></div>`}
 $('populationRows').innerHTML=populationDefs.map(makeRow).join('');
 $('capacityRows').innerHTML=machineDefs.map(makeRow).join('');
-const defaults={population:'',incidence:164,rtRate:.5};
-// Center-level defaults remain available, but Machine parameters must stay blank
-// until a saved Machine is selected or a new Machine is explicitly created.
+const defaults={population:'',incidence:164,rtRate:.5,op:720,idle:60,yearlyDowntime:0,allow:100,imrt:30,imrtTime:15,crtTime:8,eff:100,avgFrac:25};
 Object.entries(defaults).forEach(([k,v])=>{if($(k))$(k).value=v});
-resetMachineInputs();
 function n(id){const v=parseFloat($(id)?.value);return Number.isFinite(v)?v:0}
 function fmt(v,d=2){return Number.isFinite(v)?v.toFixed(d):'-'}
 function isConfiguredWorkday(iso,hs=holidaySet()){let d=new Date(iso+'T00:00:00'),day=d.getDay();if(hs.has(iso))return false;if(day===6)return !!$('workSat')?.checked;if(day===0)return !!$('workSun')?.checked;return true}
@@ -212,7 +209,7 @@ function calc(){
 }
 function setInitialCalendarDates(){let now=new Date(),y=now.getFullYear();if(!$('startDate').value)$('startDate').value=`${y}-01-01`;if(!$('endDate').value)$('endDate').value=`${y}-12-31`;if(!$('historyMonth').value)$('historyMonth').value=`${y}-${String(now.getMonth()+1).padStart(2,'0')}`}
 function resetCenterInputs(){['population'].forEach(id=>$(id).value='');$('incidence').value=164;$('rtRate').value=.5}
-function resetMachineInputs(){['op','idle','yearlyDowntime','allow','cycle','imrt','crt','imrtTime','crtTime','caseHour','eff','avgFrac','annualFrac','dailyCap','annualCases'].forEach(id=>{if($(id))$(id).value=''});$('holidayList').value='';if($('workSat'))$('workSat').checked=false;if($('workSun'))$('workSun').checked=false;$('startDate').value='';$('endDate').value='';['workingDays','workingDaysHoliday'].forEach(id=>{if($(id))$(id).value=''});['kpiCycle','kpiDaily','kpiAnnualFrac','kpiAnnualCases','cap3d','capVmat'].forEach(id=>{if($(id))$(id).textContent='-'});}
+function resetMachineInputs(){['op','idle','yearlyDowntime','imrt','imrtTime','crtTime','eff','avgFrac'].forEach(id=>$(id).value='');$('holidayList').value='';if($('workSat'))$('workSat').checked=false;if($('workSun'))$('workSun').checked=false;let y=new Date().getFullYear();$('startDate').value=`${y}-01-01`;$('endDate').value=`${y}-12-31`;calc()}
 function centerExists(name){return !!centers[centerKey(name)]}
 function machineExists(center,machine){return !!machines[machineKey(center,machine)]}
 async function saveCenter(){const name=$('centerSelect').value.trim();if(!name){alert('กรุณาระบุชื่อ Center');return}const ck=centerKey(name),existing=centers[ck],pin=$('centerPin').value.trim();let access=existing?.access||{};
