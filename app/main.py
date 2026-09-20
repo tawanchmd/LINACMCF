@@ -257,6 +257,94 @@ def save_history(machine_id:int,rows:list[HistoryRowIn],u:User=Depends(current_u
         else: s.add(DailyHistory(machine_id=machine_id,**x.model_dump()))
     audit(s,u,"history.upsert",m.center_id,f"machine={machine_id}; rows={len(rows)}"); s.commit(); return {"saved":len(rows)}
 
+
+def _state_obj(r):
+    try: return json.loads(r.payload or "{}")
+    except Exception: return {}
+
+def _json_obj(v):
+    if isinstance(v,dict): return v
+    if not v: return {}
+    try: return json.loads(v)
+    except Exception: return {}
+
+def _national_rollup_rows(s:Session):
+    """Shared read model assembled from each authenticated user's persisted center workspace.
+    Center records are de-duplicated by serverCenterId when available, otherwise normalized name.
+    Raw daily histories are used only to derive aggregate utilization; they are never returned here.
+    """
+    merged={}
+    states=s.scalars(select(AppState).where(AppState.state_key.like("browser-v5:user:%"))).all()
+    for st in states:
+        payload=_state_obj(st)
+        cs=_json_obj(payload.get("centers")); ms=_json_obj(payload.get("machines"))
+        histories=payload.get("histories") or {}
+        for ck,center in cs.items():
+            if not isinstance(center,dict): continue
+            sid=center.get("serverCenterId")
+            key=("id:"+str(sid)) if sid else ("name:"+str(center.get("center") or ck).strip().lower())
+            row=merged.setdefault(key,{"center_id":sid,"center_name":center.get("center") or ck,
+                "population":center.get("population") or {},"service_area":center.get("serviceArea") or {},
+                "machines":{},"history_totals":[],"updated_at":str(st.updated_at or "")})
+            # Prefer the most recently encountered non-empty center metadata.
+            if center.get("population"): row["population"]=center.get("population")
+            if center.get("serviceArea"): row["service_area"]=center.get("serviceArea")
+            if str(st.updated_at or "")>=row.get("updated_at",""): row["updated_at"]=str(st.updated_at or "")
+            for mk,m in ms.items():
+                if not isinstance(m,dict): continue
+                mck=str(m.get("centerKey") or "").strip().lower()
+                if mck!=str(ck).strip().lower() and str(m.get("center") or "").strip().lower()!=str(center.get("center") or "").strip().lower(): continue
+                mname=str(m.get("machine") or mk)
+                row["machines"][mname]={"name":mname,"machineInputs":m.get("machineInputs") or {},"computed":m.get("computed") or {}}
+                hv=histories.get("histDaily|"+mk)
+                h=_json_obj(hv)
+                for _,v in h.items():
+                    if isinstance(v,dict):
+                        try: row["history_totals"].append(float(v.get("newPatients") or 0)+float(v.get("activePatients") or 0))
+                        except Exception: pass
+    out=[]
+    for row in merged.values():
+        machines=list(row["machines"].values())
+        cap=sum(float((m.get("computed") or {}).get("annualCases") or 0) for m in machines)
+        daily=sum(float((m.get("computed") or {}).get("daily") or (m.get("computed") or {}).get("dailyCap") or 0) for m in machines)
+        hist=row.pop("history_totals",[])
+        recent=hist[-20:] if hist else []
+        current=(sum(recent)/len(recent)/daily*100) if recent and daily>0 else None
+        row["machines"]=machines; row["machine_count"]=len(machines); row["modeled_capacity"]=cap
+        row["current_utilization_pct"]=current
+        if current is None: row["capacity_interpretation"]="Insufficient recent workload data"
+        elif current>=90: row["capacity_interpretation"]="High utilization — limited modeled operating buffer"
+        elif current>=70: row["capacity_interpretation"]="Moderate-to-high utilization"
+        else: row["capacity_interpretation"]="Utilization below modeled daily capacity"
+        out.append(row)
+    return sorted(out,key=lambda x:x["center_name"].lower())
+
+@app.get("/api/national/rollup")
+def national_rollup(u:User=Depends(current_user),s:Session=Depends(db)):
+    # National aggregate is intentionally visible to authenticated center users.
+    # It contains center/service-area/capacity summaries, not raw patient-level history.
+    rows=_national_rollup_rows(s)
+    return {"centers":rows,"center_count":len(rows),"machine_count":sum(x["machine_count"] for x in rows),
+            "modeled_capacity":sum(x["modeled_capacity"] for x in rows)}
+
+@app.get("/api/admin/center-intelligence")
+def admin_center_intelligence(u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    rows=_national_rollup_rows(s)
+    by_id={x.get("center_id"):x for x in rows if x.get("center_id") is not None}
+    users=[]
+    for m in s.scalars(select(CenterMembership)).all():
+        usr=s.get(User,m.user_id); ctr=s.get(Center,m.center_id)
+        if not usr or not ctr: continue
+        prof=s.scalar(select(UserProfile).where(UserProfile.user_id==usr.id))
+        agg=by_id.get(m.center_id,{})
+        users.append({"name":prof.full_name if prof else usr.email,"email":usr.email,"center_name":ctr.name,
+            "center_role":m.role,"area_of_responsibility":(agg.get("service_area") or {}).get("provinces",[]),
+            "machine_names":[x.get("name") for x in agg.get("machines",[])],"machine_count":agg.get("machine_count",0),
+            "modeled_capacity":agg.get("modeled_capacity",0),"current_utilization_pct":agg.get("current_utilization_pct"),
+            "capacity_interpretation":agg.get("capacity_interpretation","Insufficient data")})
+    return {"rows":users}
+
 @app.get("/api/state")
 def get_state(u:User=Depends(current_user),s:Session=Depends(db)):
     key=f"browser-v5:user:{u.id}"
