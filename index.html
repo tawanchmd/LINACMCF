@@ -211,7 +211,12 @@ function resetCenterInputs(){['population'].forEach(id=>$(id).value='');$('incid
 function resetMachineInputs(){['op','idle','yearlyDowntime','imrt','imrtTime','crtTime','eff','avgFrac'].forEach(id=>$(id).value='');$('holidayList').value='';if($('workSat'))$('workSat').checked=false;if($('workSun'))$('workSun').checked=false;let y=new Date().getFullYear();$('startDate').value=`${y}-01-01`;$('endDate').value=`${y}-12-31`;calc()}
 function centerExists(name){return !!centers[centerKey(name)]}
 function machineExists(center,machine){return !!machines[machineKey(center,machine)]}
-async function saveCenter(){const name=$('centerSelect').value.trim();if(!name){alert('กรุณาระบุชื่อ Center');return}const ck=centerKey(name),existing=centers[ck],pin=$('centerPin').value.trim();if(existing&&hasCenterPin(ck)&&!unlockedCenters.has(ck)){alert('Center นี้ถูกล็อก กรุณา Unlock ก่อนแก้ไข');return}let access=existing?.access||{};if(!hasCenterPin(ck)){if(!validPin(pin)){alert('Center ใหม่/Center เดิมที่ยังไม่มี PIN ต้องตั้ง PIN เป็นตัวเลข 6 หลักก่อนบันทึก');return}{const salt=randomSalt(),iterations=150000;access={pinHash:localPinHash(pin,salt),salt,iterations:1,scheme:'local-prototype-v1',createdAt:new Date().toISOString()};}unlockedCenters.add(ck)}centers[ck]={center:name,population:{population:n('population'),incidence:n('incidence'),rtRate:n('rtRate')},serviceArea:existing?.serviceArea||{},access,updatedAt:new Date().toISOString()};$('centerPin').value='';persistStores();refreshLists();renderDataManager();calc();updateAccessUi();alert('บันทึก Center parameters และ access protection แล้ว')}
+async function saveCenter(){const name=$('centerSelect').value.trim();if(!name){alert('กรุณาระบุชื่อ Center');return}const ck=centerKey(name),existing=centers[ck],pin=$('centerPin').value.trim();let access=existing?.access||{};
+if(window.serverAuthenticated){
+  centers[ck]={center:name,population:{population:n('population'),incidence:n('incidence'),rtRate:n('rtRate')},serviceArea:existing?.serviceArea||{},access,serverCenterId:(window.currentServerUser?.memberships||[]).find(m=>m.center_name===name)?.center_id||existing?.serverCenterId,updatedAt:new Date().toISOString()};
+  persistStores();refreshLists();renderDataManager();calc();updateAccessUi();return;
+}
+if(existing&&hasCenterPin(ck)&&!unlockedCenters.has(ck)){alert('Center นี้ถูกล็อก กรุณา Unlock ก่อนแก้ไข');return}if(!hasCenterPin(ck)){if(!validPin(pin)){alert('Center ใหม่/Center เดิมที่ยังไม่มี PIN ต้องตั้ง PIN เป็นตัวเลข 6 หลักก่อนบันทึก');return}{const salt=randomSalt(),iterations=150000;access={pinHash:localPinHash(pin,salt),salt,iterations:1,scheme:'local-prototype-v1',createdAt:new Date().toISOString()};}unlockedCenters.add(ck)}centers[ck]={center:name,population:{population:n('population'),incidence:n('incidence'),rtRate:n('rtRate')},serviceArea:existing?.serviceArea||{},access,updatedAt:new Date().toISOString()};$('centerPin').value='';persistStores();refreshLists();renderDataManager();calc();updateAccessUi();alert('บันทึก Center parameters และ access protection แล้ว')}
 function saveMachine(){if(!requireUnlocked('เพื่อบันทึก Machine'))return;const center=$('centerSelect').value.trim(),machine=$('machineSelect').value.trim();if(!center){alert('กรุณาเลือกหรือบันทึก Center ก่อน');return}if(!machine){alert('กรุณาระบุชื่อ Machine');return}const ck=centerKey(center);if(!centers[ck])centers[ck]={center,population:{population:n('population'),incidence:n('incidence'),rtRate:n('rtRate')},updatedAt:new Date().toISOString()};const m=calc(),mk=machineKey(center,machine);machines[mk]={centerKey:ck,center,machine,machineInputs:currentMachineInput(),calendar:{startDate:$('startDate').value,endDate:$('endDate').value,holidayList:$('holidayList').value,workSat:!!$('workSat')?.checked,workSun:!!$('workSun')?.checked},computed:m,updatedAt:new Date().toISOString()};persistStores();refreshLists();renderDataManager();calc();alert('บันทึก Machine และเชื่อมกับ Center แล้ว')}
 function refreshLists(){const cs=Object.values(centers).map(x=>x.center).filter(Boolean);const cl=$('centerList');if(cl)cl.innerHTML=cs.map(x=>`<option value="${esc(x)}">`).join('');const sel=$('centerSelect');const ck=centerKey(sel?sel.value:'');const ms=centerIsUnlocked(ck)?Object.values(machines).filter(x=>x.centerKey===ck).map(x=>x.machine).filter(Boolean):[];const ml=$('machineList');if(ml)ml.innerHTML=ms.map(x=>`<option value="${esc(x)}">`).join('');const msel=$('machineSelect');if(msel){const cur=msel.value;msel.innerHTML='<option value="">Select machine</option>'+ms.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');if(ms.includes(cur))msel.value=cur}}
 function loadCenter(name=$('centerSelect').value.trim(),force=false){const ck=centerKey(name),rec=centers[ck];if(!rec)return false;$('centerSelect').value=rec.center;if(!force&&!centerIsUnlocked(ck)){protectCenterView();$('centerSelect').value=rec.center;updateAccessUi();return false}Object.entries(rec.population||{}).forEach(([k,v])=>{if($(k))$(k).value=v});refreshLists();loadServiceArea();calc();updateAccessUi();return true}
@@ -502,7 +507,7 @@ refreshMachineSelectV27();
  setTimeout(syncHeader,0);
  ['population','incidence','rtRate'].forEach(id=>$v(id)?.addEventListener('change',()=>{try{saveCenter()}catch(e){console.warn(e)}}));
  const modal=$v('machineModal'), name=$v('newMachineName');
- $v('addMachineBtn').onclick=()=>{let c=$v('centerSelect').value.trim();if(!c||!centerIsUnlocked(centerKey(c))){alert('กรุณา Login Center ก่อน');return}name.value='';modal.style.display='flex';setTimeout(()=>name.focus(),0)};
+ $v('addMachineBtn').onclick=()=>{let c=$v('centerSelect').value.trim();if(window.serverAuthenticated&&!c){const m=(window.currentServerUser?.memberships||[])[0];if(m?.center_name){c=m.center_name;$v('centerSelect').value=c;const ck=centerKey(c);if(!centers[ck])centers[ck]={center:c,population:{population:0,incidence:164,rtRate:.5},serviceArea:{country:'Thailand',provinces:[]},access:{},serverCenterId:m.center_id,updatedAt:new Date().toISOString()};persistStores();if(typeof loadCenter==='function')loadCenter(c,true);if(typeof loadServiceArea==='function')loadServiceArea()}}if(!c||!centerIsUnlocked(centerKey(c))){alert(window.serverAuthenticated?'บัญชีนี้ยังไม่ได้รับสิทธิ์ Center':'กรุณา Login Center ก่อน');return}name.value='';modal.style.display='flex';setTimeout(()=>name.focus(),0)};
  $v('cancelAddMachineBtn').onclick=()=>modal.style.display='none';
  $v('confirmAddMachineBtn').onclick=()=>{let nm=name.value.trim();if(!nm){alert('กรุณาระบุชื่อเครื่อง');return}let c=$v('centerSelect').value.trim(),ck=centerKey(c),mk=machineKey(c,nm);if(machines[mk]){alert('มี Machine ชื่อนี้แล้ว');return}machines[mk]={centerKey:ck,center:c,machine:nm,machineInputs:{},calendar:{},computed:{},updatedAt:new Date().toISOString()};persistStores();refreshMachineSelectV27();$v('machineSelect').value=nm;resetMachineInputs();modal.style.display='none';calc();};
  $v('saveMachineVisibleBtn').onclick=()=>saveMachine();
@@ -765,6 +770,22 @@ document.addEventListener('click',function(e){
      return true;
    }
    if(gate)gate.style.display='none';
+   // Bridge authenticated RBAC membership into the frozen legacy workspace context.
+   // This prevents centerSelect from being blank, avoids the old "Login Center" guard,
+   // and gives service-area edits a real center record to persist into.
+   if(!me.system_admin && me.memberships && me.memberships.length){
+     const membership=me.memberships[0], assigned=(membership.center_name||'').trim();
+     if(assigned){
+       const ck=centerKey(assigned);
+       if(!centers[ck]) centers[ck]={center:assigned,population:{population:0,incidence:164,rtRate:.5},serviceArea:{country:'Thailand',provinces:[],foreignAreas:[],foreignPopulation:0,populationReference:'2024-12'},access:{},serverCenterId:membership.center_id,updatedAt:new Date().toISOString()};
+       else {centers[ck].serverCenterId=membership.center_id;centers[ck].center=assigned}
+       document.getElementById('centerSelect').value=assigned;
+       persistStores();
+       if(typeof loadCenter==='function') loadCenter(assigned,true);
+       if(typeof loadServiceArea==='function') loadServiceArea();
+       if(typeof refreshMachineSelectV27==='function') refreshMachineSelectV27();
+     }
+   }
    if(typeof enterWorkspace==='function') enterWorkspace('centerPage');
    if(me.system_admin){loadAdminRequests();window.adminRequestPoll=setInterval(loadAdminRequests,60000)}
    return true;
