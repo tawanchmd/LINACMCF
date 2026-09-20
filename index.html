@@ -381,9 +381,35 @@ const TH_GEOJSON_URL='/static/thailand-adm1-77.geojson';
 function normalizeProvinceName(v){return String(v||'').trim().toLowerCase().replace(/province/g,'').replace(/changwat/g,'').replace(/[^a-zก-๙]/g,'')}
 function geoProvinceName(props){let keys=['ADM1_EN','ADM1_TH','ADM1_PCODE','name_en_canonical','name_en','pro_en','PROV_NAM_E','province','NAME_1','name','NAME'];for(let k of keys)if(props&&props[k])return props[k];return ''}
 function matchProvinceInfo(name,props={}){let n=normalizeProvinceName(name);let all=Object.values(PROVINCE_BY_EN||{});let hit=all.find(x=>normalizeProvinceName(x.en)===n||normalizeProvinceName(x.th)===n);if(hit)return hit;let code=props.ADM1_PCODE||props.tis1099_code||props.pro_code||props.PROV_CODE||props.iso3166_2;if(code){let digits=String(code).match(/\d+/)?.[0];hit=all.find(x=>String(x.code||'')===digits)}return hit||null}
-function provinceCapacityStats(provEn){let ns=nationalDemandSummary(),owners=ns.provinceOwners[provEn]||[],centerKeys=new Set(owners.map(o=>o.ck)),ms=nationalMachineValues().filter(m=>centerKeys.has(m.centerKey)),cap=0;ms.forEach(m=>{let a=+m.machineInputs?.allow;if(!Number.isFinite(a))a=1;cap+=(+m.computed?.annualCases||0)*Math.max(0,Math.min(1,a))});let info=PROVINCE_BY_EN[provEn],pop=info?.population||0,avgInc=owners.length?owners.reduce((z,o)=>z+o.inc,0)/owners.length:0,avgRt=owners.length?owners.reduce((z,o)=>z+o.rt,0)/owners.length:0,dem=pop*avgInc/100000*avgRt;return{owners,centerKeys,ms,cap,dem,pop,ratio:cap>0?dem/cap:null}}
-function provinceFill(st){if(!st.owners.length)return '#e2e8f0';if(!st.cap)return '#fecaca';if(st.ratio>1)return '#fca5a5';if(st.ratio>.9)return '#fdba74';if(st.ratio>.8)return '#fde68a';return '#86efac'}
-function showProvinceDetail(provEn){let info=PROVINCE_BY_EN[provEn],st=provinceCapacityStats(provEn);if(!info)return;$('regionTitle').textContent=(info.th||provEn)+' — '+provEn;$('regionCenters').textContent=st.centerKeys.size;$('regionMachines').textContent=st.ms.length;$('regionCapacity').textContent=fmt(st.cap,0);$('regionDemand').textContent=fmt(st.dem,0);let names=st.owners.map(o=>nationalCenterByKey(o.ck)?.center||o.ck);$('regionCenterList').innerHTML=`<div class="province-summary"><div class="province-row"><strong>Population</strong><span>${fmt(st.pop,0)}</span><span>${st.ratio==null?'No capacity':(st.ratio*100).toFixed(0)+'% demand/capacity'}</span><span>${st.owners.length>1?'⚠ overlap':'✓'}</span></div></div><div class="hint" style="margin-top:10px"><b>Responsible center(s):</b> ${names.length?names.map(esc).join(', '):'Not assigned'}</div>`}
+function computeProvinceCapacityAllocation(){
+ const ns=nationalDemandSummary(), cEntries=nationalCenterEntries(), mvals=nationalMachineValues();
+ const remaining={}, allocated={}, demand={};
+ Object.entries(ns.provinceOwners).forEach(([p,owners])=>{
+   const pop=PROVINCE_BY_EN[p]?.population||0;
+   const inc=owners.length?owners.reduce((z,o)=>z+o.inc,0)/owners.length:0;
+   const rt=owners.length?owners.reduce((z,o)=>z+o.rt,0)/owners.length:0;
+   demand[p]=pop*inc/100000*rt; remaining[p]=demand[p]; allocated[p]=0;
+ });
+ const pools={};let maxPriority=0;
+ cEntries.forEach(([ck,c])=>{
+   const ps=c.serviceArea?.provinces||[];maxPriority=Math.max(maxPriority,ps.length);
+   pools[ck]=mvals.filter(m=>m.centerKey===ck).reduce((z,m)=>z+(+m.computed?.annualCases||0),0);
+ });
+ // Priority 0 = principal province. Only residual capacity proceeds to priority 1, 2, ...
+ for(let level=0;level<maxPriority;level++){
+   const groups={};
+   cEntries.forEach(([ck,c])=>{const p=(c.serviceArea?.provinces||[])[level];if(p&&pools[ck]>0)(groups[p]??=[]).push(ck)});
+   Object.entries(groups).forEach(([p,cks])=>{
+     const pool=cks.reduce((z,ck)=>z+(pools[ck]||0),0),need=Math.max(0,remaining[p]||0),used=Math.min(pool,need);
+     allocated[p]=(allocated[p]||0)+used;remaining[p]=need-used;
+     if(pool>0&&used>0)cks.forEach(ck=>{pools[ck]=Math.max(0,pools[ck]-used*((pools[ck]||0)/pool))});
+   });
+ }
+ return {allocated,remaining,demand,residualByCenter:pools};
+}
+function provinceCapacityStats(provEn){let ns=nationalDemandSummary(),owners=ns.provinceOwners[provEn]||[],centerKeys=new Set(owners.map(o=>o.ck)),ms=nationalMachineValues().filter(m=>centerKeys.has(m.centerKey)),alloc=computeProvinceCapacityAllocation(),cap=alloc.allocated[provEn]||0,dem=alloc.demand[provEn]||0,info=PROVINCE_BY_EN[provEn],pop=info?.population||0,gap=alloc.remaining[provEn]||0;return{owners,centerKeys,ms,cap,dem,pop,gap,ratio:dem>0?gap/dem:null,served:dem>0?1-gap/dem:null}}
+function provinceFill(st){if(!st.owners.length)return '#e2e8f0';if(st.dem<=0)return '#e2e8f0';const gapShare=st.gap/st.dem;if(gapShare>.5)return '#fca5a5';if(gapShare>.2)return '#fdba74';if(gapShare>0)return '#fde68a';return '#86efac'}
+function showProvinceDetail(provEn){let info=PROVINCE_BY_EN[provEn],st=provinceCapacityStats(provEn);if(!info)return;$('regionTitle').textContent=(info.th||provEn)+' — '+provEn;$('regionCenters').textContent=st.centerKeys.size;$('regionMachines').textContent=st.ms.length;$('regionCapacity').textContent=fmt(st.cap,0);$('regionDemand').textContent=fmt(st.dem,0);let names=st.owners.map(o=>nationalCenterByKey(o.ck)?.center||o.ck);$('regionCenterList').innerHTML=`<div class="province-summary"><div class="province-row"><strong>Population</strong><span>${fmt(st.pop,0)}</span><span>${st.dem<=0?'No demand estimate':((st.served||0)*100).toFixed(0)+'% demand covered'}</span><span>${st.owners.length>1?'⚠ overlap':'✓'}</span></div></div><div class="hint" style="margin-top:10px"><b>Responsible center(s):</b> ${names.length?names.map(esc).join(', '):'Not assigned'}</div>`}
 function addCenterMarkers(){if(!thailandLeafletMap||!thailandProvinceLayer)return;
  if(window._centerMarkerLayer){window._centerMarkerLayer.remove();window._centerMarkerLayer=null}
  let marks=[];
