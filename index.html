@@ -183,6 +183,11 @@ $('populationRows').innerHTML=populationDefs.map(makeRow).join('');
 $('capacityRows').innerHTML=machineDefs.map(makeRow).join('');
 const defaults={population:'',incidence:164,rtRate:.5,op:720,idle:60,yearlyDowntime:0,allow:100,imrt:30,imrtTime:15,crtTime:8,eff:100,avgFrac:25};
 Object.entries(defaults).forEach(([k,v])=>{if($(k))$(k).value=v});
+// UI-only: an unselected Machine must display blank parameter fields.
+// Do not call resetMachineInputs()/calc() here because that changes allowance/input behavior.
+if(!$('machineSelect')?.value){
+  ['op','idle','yearlyDowntime','allow','cycle','imrt','crt','imrtTime','crtTime','caseHour','eff','avgFrac','annualFrac','dailyCap','annualCases'].forEach(id=>{if($(id))$(id).value=''});
+}
 function n(id){const v=parseFloat($(id)?.value);return Number.isFinite(v)?v:0}
 function fmt(v,d=2){return Number.isFinite(v)?v.toFixed(d):'-'}
 function isConfiguredWorkday(iso,hs=holidaySet()){let d=new Date(iso+'T00:00:00'),day=d.getDay();if(hs.has(iso))return false;if(day===6)return !!$('workSat')?.checked;if(day===0)return !!$('workSun')?.checked;return true}
