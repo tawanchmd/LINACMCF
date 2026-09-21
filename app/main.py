@@ -31,6 +31,8 @@ class SetupIn(BaseModel): email:str; password:str=Field(min_length=12,max_length
 class UserCreateIn(BaseModel): email:str; password:str=Field(min_length=12,max_length=128)
 class MembershipIn(BaseModel): user_id:int; center_id:int; role:str
 class PasswordChangeIn(BaseModel): current_password:str; new_password:str=Field(min_length=12,max_length=128)
+class PasswordRecoveryRequestIn(BaseModel): email:str=Field(min_length=3,max_length=254)
+class PasswordRecoveryCompleteIn(BaseModel): temporary_password:str=Field(min_length=12,max_length=128)
 class CenterIn(BaseModel): name:str; country:str="Thailand"
 class HistoryRowIn(BaseModel): date:date; new_patients:int=Field(ge=0); active_patients:int=Field(ge=0)
 class MachineIn(BaseModel):
@@ -84,6 +86,17 @@ def setup_admin(x:SetupIn,request:Request,s:Session=Depends(db)):
     u=User(email=email,password_hash=password_hash.hash(x.password),is_system_admin=True)
     s.add(u); s.flush(); audit(s,u,"system.bootstrap"); s.commit(); request.session["uid"]=u.id
     return {"ok":True,"user":{"id":u.id,"email":u.email,"system_admin":True}}
+
+@app.post("/api/auth/password-recovery/request")
+def password_recovery_request(x:PasswordRecoveryRequestIn,s:Session=Depends(db)):
+    email=x.email.strip().lower()
+    u=s.scalar(select(User).where(User.email==email))
+    if u:
+        pending=s.scalar(select(AccessRequest).where(AccessRequest.user_id==u.id,AccessRequest.request_type=="password_reset",AccessRequest.status=="pending"))
+        if not pending:
+            r=AccessRequest(user_id=u.id,request_type="password_reset",status="pending")
+            s.add(r); audit(s,u,"password.reset.request"); s.commit()
+    return {"ok":True,"message":"If the account exists, a password recovery request has been sent to the System Admin."}
 
 @app.post("/api/auth/signup")
 def signup(x:SignupIn,request:Request,s:Session=Depends(db)):
@@ -199,6 +212,17 @@ def admin_approve_access(request_id:int,u:User=Depends(current_user),s:Session=D
     s.add(CenterMembership(user_id=r.user_id,center_id=center_id,role="center_admin" if r.request_type=="new_center" else "viewer"))
     r.status="approved"; audit(s,u,"access.approve",center_id,f"request_id={r.id}; user_id={r.user_id}"); s.commit()
     return {"ok":True,"center_id":center_id,"role":"center_admin" if r.request_type=="new_center" else "viewer"}
+
+@app.post("/api/admin/access-requests/{request_id}/password-recovery")
+def admin_password_recovery(request_id:int,x:PasswordRecoveryCompleteIn,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    r=s.get(AccessRequest,request_id)
+    if not r or r.status!="pending" or r.request_type!="password_reset": raise HTTPException(404,"Pending password reset request not found")
+    target=s.get(User,r.user_id)
+    if not target: raise HTTPException(404,"User not found")
+    target.password_hash=password_hash.hash(x.temporary_password)
+    r.status="approved"; audit(s,u,"password.reset.admin",detail=f"request_id={r.id};user_id={target.id}"); s.commit()
+    return {"ok":True,"user_email":target.email}
 
 @app.post("/api/admin/access-requests/{request_id}/reject")
 def admin_reject_access(request_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
