@@ -423,6 +423,9 @@ def forecast_api(x:ForecastIn,u:User=Depends(current_user)):
             "upper":[v+residual*math.sqrt(i+1) for i,v in enumerate(fc)],
             "method":"rolling-origin MAE; approximate residual band"}
 
+@app.get("/password-recovery")
+def password_recovery_page(): return FileResponse("static/password-recovery.html")
+
 app.mount("/static",StaticFiles(directory="static"),name="static")
 @app.get("/")
 def root(): return FileResponse("index.html")
