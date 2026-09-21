@@ -929,7 +929,7 @@ window.loadAdminCenterIntelligence=async function(){
   if(form)form.addEventListener('submit',async function(e){
    e.preventDefault(); const msg=document.getElementById('serverLoginMsg'); msg.textContent='Signing in…';
    try{
-    const endpoint=setupRequired?'/api/auth/setup':'/api/auth/login'; const r=await fetch(endpoint,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('serverEmail').value,password:document.getElementById('serverPassword').value})});
+    const endpoint=setupRequired?'/api/auth/setup':'/api/auth/login'; const r=await fetch(endpoint,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(setupRequired?{full_name:'System Admin',email:document.getElementById('serverEmail').value,password:document.getElementById('serverPassword').value}:{email:document.getElementById('serverEmail').value,password:document.getElementById('serverPassword').value})});
     if(!r.ok){const j=await r.json().catch(()=>({}));msg.textContent=j.detail||'Email or password is incorrect.';return}
     location.reload();
    }catch(err){msg.textContent='Server unavailable. Please try again.'}
