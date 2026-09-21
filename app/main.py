@@ -399,6 +399,30 @@ def forecast_api(x:ForecastIn,u:User=Depends(current_user)):
             "upper":[v+residual*math.sqrt(i+1) for i,v in enumerate(fc)],
             "method":"rolling-origin MAE; approximate residual band"}
 
+
+def _report_snapshot_for_user(s,u):
+    """Read-only adapter for Center Report. Never mutates AppState/core workspace."""
+    ms=memberships(s,u)
+    if u.is_system_admin:
+        raise HTTPException(403,"Center Report is for center-scoped users")
+    if not ms: raise HTTPException(403,"No center membership")
+    m=ms[0]; ctr=s.get(Center,m.center_id)
+    key=f"browser-v5:user:{u.id}"
+    row=s.scalar(select(AppState).where(AppState.state_key==key))
+    payload=json.loads(row.payload) if row and row.payload else {}
+    return {"generated_for":{"user_id":u.id,"email":u.email,"role":m.role},
+            "center":{"id":ctr.id,"name":ctr.name,"country":ctr.country},
+            "snapshot_updated_at":row.updated_at.isoformat() if row and row.updated_at else None,
+            "payload":payload}
+
+@app.get("/api/report/center-snapshot")
+def center_report_snapshot(u:User=Depends(current_user),s:Session=Depends(db)):
+    return _report_snapshot_for_user(s,u)
+
+@app.get("/center-report")
+def center_report_page():
+    return FileResponse("static/center-report.html")
+
 app.mount("/static",StaticFiles(directory="static"),name="static")
 @app.get("/")
 def root(): return FileResponse("index.html")
