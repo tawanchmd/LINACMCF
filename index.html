@@ -502,8 +502,14 @@ refreshMachineSelectV27();
         byId('centerSelect').value=name; byId('centerPin').value=pin;
         if(typeof resetCenterInputs==='function') resetCenterInputs();
         if(typeof updateAccessUi==='function') updateAccessUi();
-        if(typeof enterWorkspace==='function') enterWorkspace('centerPage'); setTimeout(()=>window.updateIdentityHeader&&window.updateIdentityHeader(),0);
-        else {byId('authPage').style.display='none';byId('appNav').style.display='flex';byId('appMain').style.display='block';}
+        if(typeof enterWorkspace==='function') {
+          enterWorkspace('centerPage');
+          setTimeout(()=>window.updateIdentityHeader&&window.updateIdentityHeader(),0);
+        } else {
+          byId('authPage').style.display='none';
+          byId('appNav').style.display='flex';
+          byId('appMain').style.display='block';
+        }
         return;
       }
       if(mode()==='login'){
