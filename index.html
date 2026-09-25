@@ -323,8 +323,13 @@ function updateForecastSignal(status,peakPct,crossing,upperCross){
  if(!Number.isFinite(peakPct)){txt.textContent='Capacity comparison applies to Total patients treated / fractions.';return}
  const m=calc(), K=(m.daily||0)*Math.max(0,Math.min(1,Number.isFinite(+m.allow)?+m.allow:1));
  const g=getSeries(), rows=g.rows||[]; let active=rows.length?+rows.at(-1).active:NaN;
- const safe=Math.max(0,Math.floor(.90*K-(Number.isFinite(active)?active:0)));
- const hard=Math.max(0,Math.floor(K-(Number.isFinite(active)?active:0)));
+ const avgFrac=Math.max(1,n('avgFrac')||1);
+ // K and Active RT are fraction-slots/day. Convert only the remaining fraction headroom
+ // to sustainable new patient starts/day using average fractions per course.
+ const safeFractionHeadroom=Math.max(0,.90*K-(Number.isFinite(active)?active:0));
+ const hardFractionHeadroom=Math.max(0,K-(Number.isFinite(active)?active:0));
+ const safe=Math.max(0,Math.floor(safeFractionHeadroom/avgFrac));
+ const hard=Math.max(0,Math.floor(hardFractionHeadroom/avgFrac));
  if(peakPct>100){card.classList.add('signal-bad');txt.textContent=`Point forecast exceeds adjusted K${crossing?' around '+crossing:''}. Capacity action or workload redistribution should be reviewed.`;if($('forecastSuggestedNew'))$('forecastSuggestedNew').textContent='≤ '+safe;if(act&&K>0)act.textContent=`Suggested intake guardrail: aim for ≤ ${safe} new patients/working day to preserve ~10% buffer (absolute ceiling ≈ ${hard}/day at current Active RT). Reassess daily as Active RT changes.`}
  else if(upperCross){card.classList.add('signal-warn');txt.textContent='Point forecast remains within K, but the uncertainty band can cross capacity. Prepare contingency capacity.';if($('forecastSuggestedNew'))$('forecastSuggestedNew').textContent='≤ '+safe;if(act&&K>0)act.textContent=`Suggested intake guardrail: keep new starts around ≤ ${safe}/working day while uncertainty remains high; use ${hard}/day only as an approximate hard ceiling at current Active RT.`}
  else if(peakPct>=90){card.classList.add('signal-warn');txt.textContent='Forecast is close to carrying capacity. Limited buffer remains for variability or downtime.';if($('forecastSuggestedNew'))$('forecastSuggestedNew').textContent='≤ '+safe;if(act&&K>0)act.textContent=`Suggested intake guardrail: ≤ ${safe} new patients/working day until forecast peak returns below 90% K.`}
