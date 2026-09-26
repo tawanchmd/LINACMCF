@@ -169,7 +169,7 @@ function buildThaiProvinceAdjacency(gj){
 }
 function refreshProvinceEligibility(){
  const inputs=[...document.querySelectorAll('#thaiProvincePicker input')], selected=inputs.filter(x=>x.checked).map(x=>x.value);
- inputs.forEach(x=>{let allowed=x.checked||selected.length===0||selected.some(s=>(THAI_PROVINCE_ADJACENCY[s]||[]).includes(x.value));x.disabled=!allowed;x.closest('label')?.classList.toggle('province-unavailable',!allowed)});
+ inputs.forEach(x=>{let allowed=x.checked||selected.length===0||selected.some(s=>(THAI_PROVINCE_ADJACENCY[s]||[]).includes(x.value));x.disabled=!!window.viewerReadOnly||!allowed;x.closest('label')?.classList.toggle('province-unavailable',!allowed)});
 }
 function enforceProvinceContiguity(e){
  const x=e?.target;if(!x||x.tagName!=='INPUT')return true;
@@ -199,7 +199,7 @@ function ensureThailandAdjacency(){
 }
 setTimeout(()=>ensureThailandAdjacency(),0);
 $('centerCountry')?.addEventListener('change',()=>updateServiceAreaUi(true));
-$('thaiProvincePicker')?.addEventListener('change',(e)=>{if(enforceProvinceContiguity(e)){renderAllocationUi();updateServiceAreaUi(allocationMode()!=='manual')}});document.querySelectorAll('input[name="allocationMode"]').forEach(x=>x.addEventListener('change',()=>{renderAllocationUi();if(allocationMode()==='auto')saveServiceArea()}));$('manualAllocationBox')?.addEventListener('input',()=>{validateManualAllocation()});$('manualAllocationBox')?.addEventListener('change',()=>{if(validateManualAllocation())saveServiceArea()});
+$('thaiProvincePicker')?.addEventListener('change',(e)=>{if(window.viewerReadOnly){e.preventDefault();loadServiceArea();return}if(enforceProvinceContiguity(e)){renderAllocationUi();updateServiceAreaUi(allocationMode()!=='manual')}});document.querySelectorAll('input[name="allocationMode"]').forEach(x=>x.addEventListener('change',()=>{renderAllocationUi();if(allocationMode()==='auto')saveServiceArea()}));$('manualAllocationBox')?.addEventListener('input',()=>{validateManualAllocation()});$('manualAllocationBox')?.addEventListener('change',()=>{if(validateManualAllocation())saveServiceArea()});
 $('foreignAreas')?.addEventListener('change',()=>updateServiceAreaUi(true));
 $('foreignPopulation')?.addEventListener('change',()=>updateServiceAreaUi(true));
 const populationDefs=[
@@ -760,7 +760,7 @@ refreshMachineSelectV27();
    n.addEventListener('change',()=>{if(n.value){t.value=disp(n.value);t.dispatchEvent(new Event('change',{bubbles:true}))}});
  });
  // Auto-save working calendar/holidays for selected machine, without changing machine parameters.
- let timer; function saveCalendarOnly(){clearTimeout(timer);timer=setTimeout(()=>{
+ let timer; function saveCalendarOnly(){if(window.viewerReadOnly)return;clearTimeout(timer);timer=setTimeout(()=>{
    try{let center=$q('centerSelect').value.trim(),machine=$q('machineSelect').value.trim();if(!center||!machine)return;let mk=machineKey(center,machine),rec=machines[mk];if(!rec)return;
    rec.calendar={startDate:$q('startDate').value,endDate:$q('endDate').value,holidayList:$q('holidayList').value,workSat:!!$q('workSat').checked,workSun:!!$q('workSun').checked};rec.updatedAt=new Date().toISOString();persistStores();
    }catch(e){console.warn('Calendar autosave',e)}
@@ -957,7 +957,7 @@ window.loadAdminCenterIntelligence=async function(){
    if(viewerOnly){
      window.viewerReadOnly=true;
      const lockViewerWrites=()=>{
-       ['addMachineBtn','saveMachineVisibleBtn','saveMachineBtn','deleteSelectedMachineBtn','confirmAddMachineBtn','saveHistoryBtn','clearHistoryBtn','importHistoryExcelBtn','historyExcelFile','centerCountry','foreignAreas','foreignPopulation','historyFrom','historyFromPick','historyFromNative','historyTo','historyToPick','historyToNative'].forEach(id=>{const el=document.getElementById(id);if(el)el.disabled=true});
+       ['addMachineBtn','saveMachineVisibleBtn','saveMachineBtn','deleteSelectedMachineBtn','confirmAddMachineBtn','saveHistoryBtn','clearHistoryBtn','importHistoryExcelBtn','historyExcelFile','centerCountry','foreignAreas','foreignPopulation','historyFrom','historyFromPick','historyFromNative','historyTo','historyToPick','historyToNative','holidayList','workSat','workSun','startDate','endDate'].forEach(id=>{const el=document.getElementById(id);if(el)el.disabled=true});
        document.querySelectorAll('input[name="allocationMode"],#thaiProvincePicker input,.allocation-percent-input,#capacityRows input,#capacityRows select,#capacityRows textarea,#calendarGrid input,#calendarGrid select,#calendarGrid textarea,#populationRows input,#populationRows select,#populationRows textarea,#forecastPage input,#forecastPage select,#forecastPage textarea,#forecastPage button').forEach(el=>el.disabled=true);
        ['forecastPage','centerPage','machinePage'].forEach(id=>{const root=document.getElementById(id);if(root)root.querySelectorAll('[contenteditable="true"]').forEach(el=>el.contentEditable='false')});
        const note=document.getElementById('backendStatus');if(note)note.textContent='Connected • Viewer read-only';
