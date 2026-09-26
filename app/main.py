@@ -152,6 +152,32 @@ def admin_membership(x:MembershipIn,u:User=Depends(current_user),s:Session=Depen
     audit(s,u,"membership.upsert",x.center_id,f"user_id={x.user_id}; role={x.role}"); s.commit()
     return {"ok":True}
 
+@app.get("/api/centers/{center_id}/members")
+def center_members(center_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not can_center(s,u,center_id,"admin_write"): raise HTTPException(403,"Center Admin access required")
+    rows=s.scalars(select(CenterMembership).where(CenterMembership.center_id==center_id)).all()
+    out=[]
+    for m in rows:
+        mu=s.get(User,m.user_id)
+        if not mu: continue
+        p=s.scalar(select(UserProfile).where(UserProfile.user_id==mu.id))
+        out.append({"user_id":mu.id,"email":mu.email,"full_name":p.full_name if p else None,"role":m.role,"is_active":mu.is_active})
+    return sorted(out,key=lambda x:((x["full_name"] or x["email"]).lower(),x["email"]))
+
+@app.put("/api/centers/{center_id}/members/{user_id}/role")
+def center_member_role(center_id:int,user_id:int,x:MembershipIn,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not can_center(s,u,center_id,"admin_write"): raise HTTPException(403,"Center Admin access required")
+    if x.center_id!=center_id or x.user_id!=user_id: raise HTTPException(422,"Membership target mismatch")
+    if x.role not in ("center_admin","data_entry","viewer"): raise HTTPException(422,"Invalid role")
+    m=s.scalar(select(CenterMembership).where(CenterMembership.user_id==user_id,CenterMembership.center_id==center_id))
+    if not m: raise HTTPException(404,"Center membership not found")
+    if m.role=="center_admin" and x.role!="center_admin":
+        admins=s.scalars(select(CenterMembership).where(CenterMembership.center_id==center_id,CenterMembership.role=="center_admin")).all()
+        if len(admins)<=1: raise HTTPException(409,"A center must keep at least one Center Admin")
+    m.role=x.role
+    audit(s,u,"membership.role_change",center_id,f"user_id={user_id}; role={x.role}"); s.commit()
+    return {"ok":True,"user_id":user_id,"center_id":center_id,"role":x.role}
+
 @app.get("/api/onboarding/centers")
 def onboarding_centers(u:User=Depends(current_user),s:Session=Depends(db)):
     return [{"id":c.id,"name":c.name,"country":c.country} for c in s.scalars(select(Center).order_by(Center.name)).all()]
