@@ -902,7 +902,7 @@ window.loadAdminCenterIntelligence=async function(){
   try{
    const r=await fetch('/api/auth/me',{credentials:'same-origin'});
    if(!r.ok)throw new Error('unauthenticated');
-   const me=await r.json(); window.serverAuthenticated=true; window.currentServerUser=me; const logoutBtn=document.getElementById('logoutBtn'),signoutWrap=document.getElementById('centerAdminSignout');if(logoutBtn)logoutBtn.style.display='inline-block';if(signoutWrap)signoutWrap.style.display=(me.system_admin||(me.memberships||[]).some(m=>m.role==='center_admin'))?'block':'none';
+   const me=await r.json(); window.serverAuthenticated=true; window.currentServerUser=me; const logoutBtn=document.getElementById('logoutBtn'),signoutWrap=document.getElementById('centerAdminSignout');if(logoutBtn)logoutBtn.style.display='inline-block';if(signoutWrap)signoutWrap.style.display='block';
    window.updateIdentityHeader=function(){
     const el=document.getElementById('headerCenterName'); if(!el||!window.currentServerUser)return;
     const u=window.currentServerUser;
