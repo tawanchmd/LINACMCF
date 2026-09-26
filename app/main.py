@@ -30,6 +30,7 @@ class AccessRequestIn(BaseModel): request_type:str; center_id:int|None=None; cen
 class SetupIn(BaseModel): email:str; password:str=Field(min_length=12,max_length=128)
 class UserCreateIn(BaseModel): email:str; password:str=Field(min_length=12,max_length=128)
 class MembershipIn(BaseModel): user_id:int; center_id:int; role:str
+class CenterMemberAddIn(BaseModel): email:str; role:str="viewer"
 class PasswordChangeIn(BaseModel): current_password:str; new_password:str=Field(min_length=12,max_length=128)
 class CenterIn(BaseModel): name:str; country:str="Thailand"
 class HistoryRowIn(BaseModel): date:date; new_patients:int=Field(ge=0); active_patients:int=Field(ge=0)
@@ -177,6 +178,32 @@ def center_member_role(center_id:int,user_id:int,x:MembershipIn,u:User=Depends(c
     m.role=x.role
     audit(s,u,"membership.role_change",center_id,f"user_id={user_id}; role={x.role}"); s.commit()
     return {"ok":True,"user_id":user_id,"center_id":center_id,"role":x.role}
+
+@app.post("/api/centers/{center_id}/members")
+def center_add_member(center_id:int,x:CenterMemberAddIn,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not can_center(s,u,center_id,"admin_write"): raise HTTPException(403,"Center Admin access required")
+    if x.role not in ("center_admin","data_entry","viewer"): raise HTTPException(422,"Invalid role")
+    email=x.email.strip().lower()
+    if "@" not in email: raise HTTPException(422,"Valid email required")
+    target=s.scalar(select(User).where(User.email==email))
+    if not target: raise HTTPException(404,"No account exists for this email. Ask the user to create an account first.")
+    if not target.is_active: raise HTTPException(409,"This account is inactive")
+    existing=s.scalar(select(CenterMembership).where(CenterMembership.user_id==target.id,CenterMembership.center_id==center_id))
+    if existing: raise HTTPException(409,"This user is already a member of the center")
+    s.add(CenterMembership(user_id=target.id,center_id=center_id,role=x.role))
+    audit(s,u,"membership.add",center_id,f"user_id={target.id}; role={x.role}"); s.commit()
+    return {"ok":True,"user_id":target.id,"center_id":center_id,"role":x.role}
+
+@app.delete("/api/centers/{center_id}/members/{user_id}")
+def center_remove_member(center_id:int,user_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not can_center(s,u,center_id,"admin_write"): raise HTTPException(403,"Center Admin access required")
+    m=s.scalar(select(CenterMembership).where(CenterMembership.user_id==user_id,CenterMembership.center_id==center_id))
+    if not m: raise HTTPException(404,"Center membership not found")
+    if m.role=="center_admin":
+        admins=s.scalars(select(CenterMembership).where(CenterMembership.center_id==center_id,CenterMembership.role=="center_admin")).all()
+        if len(admins)<=1: raise HTTPException(409,"A center must keep at least one Center Admin")
+    s.delete(m); audit(s,u,"membership.remove",center_id,f"user_id={user_id}; role={m.role}"); s.commit()
+    return {"ok":True,"user_id":user_id,"center_id":center_id}
 
 @app.get("/api/onboarding/centers")
 def onboarding_centers(u:User=Depends(current_user),s:Session=Depends(db)):
