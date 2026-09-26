@@ -8,7 +8,7 @@ from app.models import Base, Center, User, UserProfile, CenterMembership, Machin
 from app.main import (
     CenterMemberAddIn, MembershipIn, MachineIn, HistoryRowIn,
     center_members, center_add_member, center_member_role, center_remove_member,
-    create_machine, history, save_history, can_center
+    create_machine, history, save_history, can_center, put_state, StateIn
 )
 from datetime import date
 
@@ -76,6 +76,12 @@ class MembershipRBACRegression(unittest.TestCase):
         out=center_member_role(self.c1.id,newcomer.id,MembershipIn(user_id=newcomer.id,center_id=self.c1.id,role="data_entry"),self.admin,self.s)
         self.assertEqual(out["role"],"data_entry")
         self.assertTrue(center_remove_member(self.c1.id,newcomer.id,self.admin,self.s)["ok"])
+
+    def test_viewer_state_is_read_only(self):
+        with self.assertRaises(HTTPException) as cm:
+            put_state(StateIn(payload={"centers":"{}","machines":"{}","histories":{}}),self.viewer,self.s)
+        self.assertEqual(cm.exception.status_code,403)
+        self.assertTrue(put_state(StateIn(payload={"centers":"{}","machines":"{}","histories":{}}),self.entry,self.s)["saved"])
 
     def test_200_member_center_list(self):
         for i in range(197):
