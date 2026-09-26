@@ -948,7 +948,9 @@ window.loadAdminCenterIntelligence=async function(){
        const note=document.getElementById('backendStatus');if(note)note.textContent='Connected • Viewer read-only';
      };
      lockViewerWrites();
-     new MutationObserver(lockViewerWrites).observe(document.getElementById('appMain')||document.body,{childList:true,subtree:true});
+     // Do not observe the whole app: login/onboarding DOM changes can create a mutation loop.
+     // Re-apply the viewer lock only when entering a workspace page.
+     document.addEventListener('click',e=>{if(e.target?.closest?.('#appNav button[data-page]'))setTimeout(lockViewerWrites,0)},true);
    }
    if(me.system_admin){
      document.body.classList.add('system-admin-mode');
