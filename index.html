@@ -391,40 +391,37 @@ function nationalDemandSummary(){let provinceOwners={},foreignDemand=0;nationalC
 function capacityDemandClass(cap,dem){if(!(dem>0))return '';let gap=(cap-dem)/dem;return gap<-.05?'status-bad':Math.abs(gap)<=.05?'status-warn':'status-good'}
 function optimizeNationalAllocation(){
  const ns=nationalDemandSummary(),centersList=nationalCenterEntries().map(([ck,c])=>({ck,c,cap:nationalMachineValues().filter(m=>m.centerKey===ck).reduce((z,m)=>z+(+m.computed?.annualCases||0),0)})).filter(x=>x.cap>0);
- const provinces=Object.keys(ns.provinceOwners||{}).filter(p=>(PROVINCE_BY_EN[p]?.population||0)>0);
- const demand={};provinces.forEach(p=>{const owners=ns.provinceOwners[p]||[],pop=PROVINCE_BY_EN[p]?.population||0,inc=owners.length?owners.reduce((z,o)=>z+o.inc,0)/owners.length:0,rt=owners.length?owners.reduce((z,o)=>z+o.rt,0)/owners.length:0;demand[p]=pop*inc/100000*rt});
+ const provinces=Object.keys(ns.provinceOwners||{}).filter(p=>(PROVINCE_BY_EN[p]?.population||0)>0),demand={};
+ provinces.forEach(p=>{const owners=ns.provinceOwners[p]||[],pop=PROVINCE_BY_EN[p]?.population||0,inc=owners.length?owners.reduce((z,o)=>z+o.inc,0)/owners.length:0,rt=owners.length?owners.reduce((z,o)=>z+o.rt,0)/owners.length:0;demand[p]=pop*inc/100000*rt});
  const x={};centersList.forEach(z=>x[z.ck]={});let remainingCap=Object.fromEntries(centersList.map(z=>[z.ck,z.cap])),remainingDemand={...demand};
- // Convex weighted-L1 transportation: deficit penalty is slightly larger than surplus.
- // With positive demand/capacity, the optimum never needs surplus while any eligible deficit remains.
- // Greedy marginal allocation is exact for this piecewise-linear objective; priority order breaks ties deterministically.
- const DEFICIT_W=1.05,SURPLUS_W=1.0;
- let guard=0;
- while(guard++<10000){
-   let best=null;
-   centersList.forEach(z=>{
-     if((remainingCap[z.ck]||0)<=1e-9)return;
-     const ps=z.c.serviceArea?.provinces||[];
-     ps.forEach((p,priority)=>{
-       if((remainingDemand[p]||0)<=1e-9)return;
-       const gain=DEFICIT_W+SURPLUS_W,score=gain-priority*1e-9;
-       if(!best||score>best.score||(score===best.score&&z.ck<best.ck))best={ck:z.ck,p,priority,score};
-     });
+ // Lexicographic national allocation:
+ // 1) maximize covered eligible demand (minimize unmet demand);
+ // 2) among coverage-equivalent choices, minimize referral penalty by service-area priority;
+ // 3) never create unnecessary surplus; residual capacity remains unallocated;
+ // 4) each Center can allocate at most 100% of its saved annual capacity.
+ // Work priority-by-priority across ALL centers, sharing each province's remaining demand
+ // proportionally among eligible centers at the same referral tier. This prevents center-key
+ // ordering from starving a center's principal province.
+ const maxPriority=centersList.reduce((m,z)=>Math.max(m,(z.c.serviceArea?.provinces||[]).length),0);
+ for(let priority=0;priority<maxPriority;priority++){
+   const groups={};
+   centersList.forEach(z=>{if((remainingCap[z.ck]||0)<=1e-9)return;const p=(z.c.serviceArea?.provinces||[])[priority];if(p&&(remainingDemand[p]||0)>1e-9)(groups[p]??=[]).push(z)});
+   Object.entries(groups).forEach(([p,zs])=>{
+     let need=remainingDemand[p]||0,totalAvail=zs.reduce((a,z)=>a+(remainingCap[z.ck]||0),0);if(!(need>1e-9&&totalAvail>1e-9))return;
+     const used=Math.min(need,totalAvail);
+     zs.forEach(z=>{const avail=remainingCap[z.ck]||0,amt=used*avail/totalAvail;if(amt>1e-9){x[z.ck][p]=(x[z.ck][p]||0)+amt;remainingCap[z.ck]-=amt}});
+     remainingDemand[p]=Math.max(0,need-used);
    });
-   if(!best)break;
-   const amt=Math.min(remainingCap[best.ck],remainingDemand[best.p]);
-   if(!(amt>1e-9))break;
-   x[best.ck][best.p]=(x[best.ck][best.p]||0)+amt;remainingCap[best.ck]-=amt;remainingDemand[best.p]-=amt;
  }
- // If all eligible demand is covered, leave residual capacity unallocated: sum allocation <=100%.
  const byProvince={};provinces.forEach(p=>byProvince[p]=[]);
  centersList.forEach(z=>Object.entries(x[z.ck]).forEach(([p,courses])=>byProvince[p]?.push({ck:z.ck,name:z.c.center||z.ck,cap:z.cap,courses,pct:100*courses/z.cap})));
- return {byProvince,byCenter:x,demand,remainingDemand,remainingCap,weights:{deficit:DEFICIT_W,surplus:SURPLUS_W}};
+ return {byProvince,byCenter:x,demand,remainingDemand,remainingCap,objective:{primary:'minimize unmet demand',secondary:'minimize referral priority penalty',tertiary:'avoid surplus'}};
 }
 function suggestedProvinceAllocation(provEn){return optimizeNationalAllocation().byProvince[provEn]||[]}
 function renderAllocationSuggestions(provEn){
  const box=$('allocationSuggestions');if(!box)return;if(!provEn){box.innerHTML='<strong>Auto / Priority allocation suggestions</strong><div class="hint">Click a province to inspect suggested Center → Province allocation.</div>';return}
  const info=PROVINCE_BY_EN[provEn],opt=optimizeNationalAllocation(),rows=opt.byProvince[provEn]||[],st=provinceCapacityStats(provEn),unmet=opt.remainingDemand[provEn]||0;
- box.innerHTML='<strong>Suggested allocation — '+esc(info?.th||provEn)+'</strong><div class="hint">National optimization solution. All provinces are solved together. Each Center\'s allocations sum to ≤100% of its saved annual capacity. Objective minimizes weighted absolute capacity-demand mismatch (deficit 1.05×, surplus 1.00×); service-area priority breaks equivalent solutions. Decision support only — no saved allocation is changed automatically.</div>'+(rows.length?'<table><tr><th>Center</th><th>Saved capacity</th><th>Suggested allocation</th><th>Courses to province</th></tr>'+rows.map(r=>'<tr><td>'+esc(r.name)+'</td><td>'+fmt(r.cap,0)+'</td><td><b>'+r.pct.toFixed(1)+'%</b></td><td>'+fmt(r.courses,0)+'</td></tr>').join('')+'</table><div class="hint">Target demand '+fmt(st.dem,0)+' courses/year'+(unmet>0?' · <span class="status-bad">Unmet '+fmt(unmet,0)+'</span>':' · <span class="status-good">Covered by optimized allocation</span>')+'.</div>':'<div class="hint">No eligible Center capacity allocated by the national optimization. Target demand '+fmt(st.dem,0)+(unmet>0?' · unmet '+fmt(unmet,0):'')+'.</div>');
+ box.innerHTML='<strong>Suggested allocation — '+esc(info?.th||provEn)+'</strong><div class="hint">National optimization solution. All provinces are solved together. Each Center\'s allocations sum to ≤100% of its saved annual capacity. Objective is lexicographic: minimize unmet demand first, then minimize referral/geographic priority penalty, then avoid unnecessary surplus. Decision support only — no saved allocation is changed automatically.</div>'+(rows.length?'<table><tr><th>Center</th><th>Saved capacity</th><th>Suggested allocation</th><th>Courses to province</th></tr>'+rows.map(r=>'<tr><td>'+esc(r.name)+'</td><td>'+fmt(r.cap,0)+'</td><td><b>'+r.pct.toFixed(1)+'%</b></td><td>'+fmt(r.courses,0)+'</td></tr>').join('')+'</table><div class="hint">Target demand '+fmt(st.dem,0)+' courses/year'+(unmet>0?' · <span class="status-bad">Unmet '+fmt(unmet,0)+'</span>':' · <span class="status-good">Covered by optimized allocation</span>')+'.</div>':'<div class="hint">No eligible Center capacity allocated by the national optimization. Target demand '+fmt(st.dem,0)+(unmet>0?' · unmet '+fmt(unmet,0):'')+'.</div>');
 }
 function updateNationalDashboard(){
  const cvals=nationalCenterEntries(),mvals=nationalMachineValues(),bench=Math.max(1,+($('iaeaBenchmark')?.value||500));
