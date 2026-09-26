@@ -389,18 +389,42 @@ async function fetchNationalRollup(){
 }
 function nationalDemandSummary(){let provinceOwners={},foreignDemand=0;nationalCenterEntries().forEach(([ck,c])=>{let inc=+c.population?.incidence||0,rt=+c.population?.rtRate||0,sa=c.serviceArea||{};if(sa.country==='Other'){foreignDemand+=centerServicePopulation(c)*inc/100000*rt;return}(sa.provinces||[]).forEach(p=>{provinceOwners[p]??=[];provinceOwners[p].push({ck,c,inc,rt})})});let demand=foreignDemand,overlaps=[];Object.entries(provinceOwners).forEach(([p,owners])=>{let pop=PROVINCE_BY_EN[p]?.population||0;if(owners.length>1)overlaps.push({province:p,owners});let avgInc=owners.reduce((z,o)=>z+o.inc,0)/owners.length,avgRt=owners.reduce((z,o)=>z+o.rt,0)/owners.length;demand+=pop*avgInc/100000*avgRt});return{demand,provinceOwners,overlaps}}
 function capacityDemandClass(cap,dem){if(!(dem>0))return '';let gap=(cap-dem)/dem;return gap<-.05?'status-bad':Math.abs(gap)<=.05?'status-warn':'status-good'}
-function suggestedProvinceAllocation(provEn){
- const ns=nationalDemandSummary(),owners=ns.provinceOwners[provEn]||[],d=computeProvinceCapacityAllocation().demand[provEn]||0;
- const rows=owners.map(o=>{const cap=nationalMachineValues().filter(m=>m.centerKey===o.ck).reduce((z,m)=>z+(+m.computed?.annualCases||0),0);return{ck:o.ck,name:nationalCenterByKey(o.ck)?.center||o.ck,cap}});
- const total=rows.reduce((z,r)=>z+r.cap,0);if(!rows.length||!(d>0)||!(total>0))return [];
- // Demand target is distributed across contributing centers in proportion to their saved capacity.
- // The percentage is of each center's own annual capacity, capped at 100%.
- return rows.map(r=>({...r,pct:Math.min(100,100*(d*(r.cap/total))/Math.max(r.cap,1)),courses:Math.min(r.cap,d*(r.cap/total))}));
+function optimizeNationalAllocation(){
+ const ns=nationalDemandSummary(),centersList=nationalCenterEntries().map(([ck,c])=>({ck,c,cap:nationalMachineValues().filter(m=>m.centerKey===ck).reduce((z,m)=>z+(+m.computed?.annualCases||0),0)})).filter(x=>x.cap>0);
+ const provinces=Object.keys(ns.provinceOwners||{}).filter(p=>(PROVINCE_BY_EN[p]?.population||0)>0);
+ const demand={};provinces.forEach(p=>{const owners=ns.provinceOwners[p]||[],pop=PROVINCE_BY_EN[p]?.population||0,inc=owners.length?owners.reduce((z,o)=>z+o.inc,0)/owners.length:0,rt=owners.length?owners.reduce((z,o)=>z+o.rt,0)/owners.length:0;demand[p]=pop*inc/100000*rt});
+ const x={};centersList.forEach(z=>x[z.ck]={});let remainingCap=Object.fromEntries(centersList.map(z=>[z.ck,z.cap])),remainingDemand={...demand};
+ // Convex weighted-L1 transportation: deficit penalty is slightly larger than surplus.
+ // With positive demand/capacity, the optimum never needs surplus while any eligible deficit remains.
+ // Greedy marginal allocation is exact for this piecewise-linear objective; priority order breaks ties deterministically.
+ const DEFICIT_W=1.05,SURPLUS_W=1.0;
+ let guard=0;
+ while(guard++<10000){
+   let best=null;
+   centersList.forEach(z=>{
+     if((remainingCap[z.ck]||0)<=1e-9)return;
+     const ps=z.c.serviceArea?.provinces||[];
+     ps.forEach((p,priority)=>{
+       if((remainingDemand[p]||0)<=1e-9)return;
+       const gain=DEFICIT_W+SURPLUS_W,score=gain-priority*1e-9;
+       if(!best||score>best.score||(score===best.score&&z.ck<best.ck))best={ck:z.ck,p,priority,score};
+     });
+   });
+   if(!best)break;
+   const amt=Math.min(remainingCap[best.ck],remainingDemand[best.p]);
+   if(!(amt>1e-9))break;
+   x[best.ck][best.p]=(x[best.ck][best.p]||0)+amt;remainingCap[best.ck]-=amt;remainingDemand[best.p]-=amt;
+ }
+ // If all eligible demand is covered, leave residual capacity unallocated: sum allocation <=100%.
+ const byProvince={};provinces.forEach(p=>byProvince[p]=[]);
+ centersList.forEach(z=>Object.entries(x[z.ck]).forEach(([p,courses])=>byProvince[p]?.push({ck:z.ck,name:z.c.center||z.ck,cap:z.cap,courses,pct:100*courses/z.cap})));
+ return {byProvince,byCenter:x,demand,remainingDemand,remainingCap,weights:{deficit:DEFICIT_W,surplus:SURPLUS_W}};
 }
+function suggestedProvinceAllocation(provEn){return optimizeNationalAllocation().byProvince[provEn]||[]}
 function renderAllocationSuggestions(provEn){
  const box=$('allocationSuggestions');if(!box)return;if(!provEn){box.innerHTML='<strong>Auto / Priority allocation suggestions</strong><div class="hint">Click a province to inspect suggested Center → Province allocation.</div>';return}
- const info=PROVINCE_BY_EN[provEn],rows=suggestedProvinceAllocation(provEn),st=provinceCapacityStats(provEn);
- box.innerHTML='<strong>Suggested allocation — '+esc(info?.th||provEn)+'</strong><div class="hint">Decision support only. Suggested percentages are shares of each Center\'s own saved annual capacity, proportionally balancing this province\'s gross demand across responsible centers. No allocation is changed automatically.</div>'+(rows.length?'<table><tr><th>Center</th><th>Saved capacity</th><th>Suggested allocation</th><th>Courses to province</th></tr>'+rows.map(r=>'<tr><td>'+esc(r.name)+'</td><td>'+fmt(r.cap,0)+'</td><td><b>'+r.pct.toFixed(1)+'%</b></td><td>'+fmt(r.courses,0)+'</td></tr>').join('')+'</table><div class="hint">Target demand '+fmt(st.dem,0)+' courses/year.</div>':'<div class="hint">No responsible Center capacity available for allocation suggestion.</div>');
+ const info=PROVINCE_BY_EN[provEn],opt=optimizeNationalAllocation(),rows=opt.byProvince[provEn]||[],st=provinceCapacityStats(provEn),unmet=opt.remainingDemand[provEn]||0;
+ box.innerHTML='<strong>Suggested allocation — '+esc(info?.th||provEn)+'</strong><div class="hint">National optimization solution. All provinces are solved together. Each Center\'s allocations sum to ≤100% of its saved annual capacity. Objective minimizes weighted absolute capacity-demand mismatch (deficit 1.05×, surplus 1.00×); service-area priority breaks equivalent solutions. Decision support only — no saved allocation is changed automatically.</div>'+(rows.length?'<table><tr><th>Center</th><th>Saved capacity</th><th>Suggested allocation</th><th>Courses to province</th></tr>'+rows.map(r=>'<tr><td>'+esc(r.name)+'</td><td>'+fmt(r.cap,0)+'</td><td><b>'+r.pct.toFixed(1)+'%</b></td><td>'+fmt(r.courses,0)+'</td></tr>').join('')+'</table><div class="hint">Target demand '+fmt(st.dem,0)+' courses/year'+(unmet>0?' · <span class="status-bad">Unmet '+fmt(unmet,0)+'</span>':' · <span class="status-good">Covered by optimized allocation</span>')+'.</div>':'<div class="hint">No eligible Center capacity allocated by the national optimization. Target demand '+fmt(st.dem,0)+(unmet>0?' · unmet '+fmt(unmet,0):'')+'.</div>');
 }
 function updateNationalDashboard(){
  const cvals=nationalCenterEntries(),mvals=nationalMachineValues(),bench=Math.max(1,+($('iaeaBenchmark')?.value||500));
