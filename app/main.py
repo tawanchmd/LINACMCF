@@ -156,13 +156,14 @@ def admin_membership(x:MembershipIn,u:User=Depends(current_user),s:Session=Depen
 @app.get("/api/centers/{center_id}/members")
 def center_members(center_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
     if not can_center(s,u,center_id,"admin_write"): raise HTTPException(403,"Center Admin access required")
-    rows=s.scalars(select(CenterMembership).where(CenterMembership.center_id==center_id)).all()
-    out=[]
-    for m in rows:
-        mu=s.get(User,m.user_id)
-        if not mu: continue
-        p=s.scalar(select(UserProfile).where(UserProfile.user_id==mu.id))
-        out.append({"user_id":mu.id,"email":mu.email,"full_name":p.full_name if p else None,"role":m.role,"is_active":mu.is_active})
+    rows=s.execute(
+        select(CenterMembership,User,UserProfile)
+        .join(User,User.id==CenterMembership.user_id)
+        .outerjoin(UserProfile,UserProfile.user_id==User.id)
+        .where(CenterMembership.center_id==center_id)
+    ).all()
+    out=[{"user_id":mu.id,"email":mu.email,"full_name":p.full_name if p else None,"role":m.role,"is_active":mu.is_active}
+         for m,mu,p in rows]
     return sorted(out,key=lambda x:((x["full_name"] or x["email"]).lower(),x["email"]))
 
 @app.put("/api/centers/{center_id}/members/{user_id}/role")
@@ -390,10 +391,13 @@ def admin_center_intelligence(u:User=Depends(current_user),s:Session=Depends(db)
     rows=_national_rollup_rows(s)
     by_id={x.get("center_id"):x for x in rows if x.get("center_id") is not None}
     users=[]
-    for m in s.scalars(select(CenterMembership)).all():
-        usr=s.get(User,m.user_id); ctr=s.get(Center,m.center_id)
-        if not usr or not ctr: continue
-        prof=s.scalar(select(UserProfile).where(UserProfile.user_id==usr.id))
+    member_rows=s.execute(
+        select(CenterMembership,User,Center,UserProfile)
+        .join(User,User.id==CenterMembership.user_id)
+        .join(Center,Center.id==CenterMembership.center_id)
+        .outerjoin(UserProfile,UserProfile.user_id==User.id)
+    ).all()
+    for m,usr,ctr,prof in member_rows:
         agg=by_id.get(m.center_id,{})
         users.append({"name":prof.full_name if prof else usr.email,"email":usr.email,"center_name":ctr.name,
             "center_role":m.role,"area_of_responsibility":(agg.get("service_area") or {}).get("provinces",[]),
