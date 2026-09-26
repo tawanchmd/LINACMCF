@@ -553,7 +553,15 @@ refreshMachineSelectV27();
         await unlockCurrentCenter();
         if(typeof centerIsUnlocked==='function' && centerIsUnlocked(centerKey(name))){
           if(typeof loadCenter==='function') loadCenter(name,true);
-          if(typeof enterWorkspace==='function') enterWorkspace('centerPage');
+          if(typeof enterWorkspace==='function'){
+     let resumePage='centerPage';
+     try{
+       const saved=sessionStorage.getItem('linacmcf.activePage');
+       if(saved && document.getElementById(saved) && document.querySelector('#appNav button[data-page="'+saved+'"]')) resumePage=saved;
+     }catch(_){}
+     enterWorkspace(resumePage);
+     if(resumePage!=='centerPage') setTimeout(()=>window.safeShowPage(resumePage),30);
+   }
         }
       }
     }catch(e){console.error('Auth submit failed',e);alert('Login error: '+(e?.message||e));}
@@ -719,6 +727,7 @@ refreshMachineSelectV27();
 // v3.6b navigation safety layer — deliberately independent from the main app init chain.
 window.safeShowPage = function(id){
   try {
+    try { sessionStorage.setItem('linacmcf.activePage', id); } catch(e) {}
     document.querySelectorAll('.app-page').forEach(function(el){ el.classList.toggle('active', el.id===id); });
     document.querySelectorAll('#appNav button').forEach(function(btn){ btn.classList.toggle('active', btn.dataset.page===id); });
     try { window.scrollTo({top:0,behavior:'auto'}); } catch(e) { window.scrollTo(0,0); }
