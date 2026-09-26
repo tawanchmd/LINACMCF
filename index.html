@@ -463,7 +463,7 @@ function restyleThailandMap(){if(!thailandProvinceLayer)return;thailandProvinceL
 async function initThailandGeoMap(){let host=$('thailandGeoMap');if(!host||thailandLeafletMap||!window.L)return;thailandLeafletMap=L.map(host,{zoomControl:true,attributionControl:true,minZoom:4,maxZoom:9,scrollWheelZoom:false}).setView([13.2,101.0],5);L.control.attribution({prefix:false}).addTo(thailandLeafletMap);try{let r=await fetch(TH_GEOJSON_URL);if(!r.ok)throw new Error('HTTP '+r.status);let gj=await r.json();buildThaiProvinceAdjacency(gj);thailandProvinceLayer=L.geoJSON(gj,{style:()=>({fillColor:'#e2e8f0',fillOpacity:.82,color:'#fff',weight:1.1}),onEachFeature:(f,l)=>{let raw=geoProvinceName(f.properties||{}),info=matchProvinceInfo(raw,f.properties||{});l.__provinceInfo=info;if(info){l.bindTooltip((info.th||info.en)+' / '+info.en,{sticky:true});l.on('click',()=>showProvinceDetail(info.en));l.on('mouseover',()=>l.setStyle({weight:2,color:'#334155'}));l.on('mouseout',()=>restyleThailandMap())}}}).addTo(thailandLeafletMap);thailandLeafletMap.fitBounds(thailandProvinceLayer.getBounds(),{padding:[8,8]});restyleThailandMap();addCenterMarkers();$('mapLoadState').textContent='Geographic boundaries loaded • 77 provinces • center markers follow assigned service-area provinces';}catch(e){$('mapLoadState').innerHTML='<b>Map boundary data could not load.</b> Internet access is required for the geographic layer in this research prototype. National calculations remain available.';console.error(e)}}
 
 
-function showAppPage(id){document.querySelectorAll('.app-page').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('#appNav button').forEach(x=>x.classList.toggle('active',x.dataset.page===id));window.scrollTo({top:0,behavior:'instant'});if(id==='forecastPage'){setTimeout(()=>{renderCalendar();updateDashboard()},20)}if(id==='countryPage')setTimeout(()=>{updateNationalDashboard();initThailandGeoMap();setTimeout(()=>{thailandLeafletMap?.invalidateSize();restyleThailandMap()},120)},20);if(id==='centerPage')setTimeout(loadServiceArea,20)}
+function showAppPage(id){try{sessionStorage.setItem('linacmcf.activePage',id)}catch(e){}document.querySelectorAll('.app-page').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('#appNav button').forEach(x=>x.classList.toggle('active',x.dataset.page===id));window.scrollTo({top:0,behavior:'instant'});if(id==='forecastPage'){setTimeout(()=>{renderCalendar();updateDashboard()},20)}if(id==='countryPage')setTimeout(()=>{updateNationalDashboard();initThailandGeoMap();setTimeout(()=>{thailandLeafletMap?.invalidateSize();restyleThailandMap()},120)},20);if(id==='centerPage')setTimeout(loadServiceArea,20)}
 document.querySelectorAll('#appNav button[data-page]').forEach(b=>b.onclick=()=>showAppPage(b.dataset.page));
 // Admin Requests is an action button, not a page-navigation button.
 // Keep its explicit openAdminRequests handler instead of overwriting it with showAppPage(undefined).
@@ -928,7 +928,14 @@ window.loadAdminCenterIntelligence=async function(){
        if(typeof refreshMachineSelectV27==='function') refreshMachineSelectV27();
      }
    }
-   if(typeof enterWorkspace==='function') enterWorkspace('centerPage');
+   if(typeof enterWorkspace==='function'){
+     let resumePage='centerPage';
+     try{
+       const saved=sessionStorage.getItem('linacmcf.activePage');
+       if(saved && document.getElementById(saved) && document.querySelector('#appNav button[data-page="'+saved+'"]')) resumePage=saved;
+     }catch(_){}
+     enterWorkspace(resumePage);
+   }
    if(me.system_admin){loadAdminRequests();window.adminRequestPoll=setInterval(loadAdminRequests,60000)}
    return true;
   }catch(e){
