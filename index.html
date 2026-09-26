@@ -871,17 +871,17 @@ window.loadAdminCenterIntelligence=async function(){
  box.innerHTML='<div class="hint">Loading center intelligence…</div>';
  try{
   const r=await fetch('/api/admin/center-intelligence',{credentials:'same-origin'});
-  if(!r.ok)throw new Error('HTTP '+r.status); const j=await r.json(),rows=j.rows||[];
+  if(!r.ok)throw new Error('HTTP '+r.status); const j=await r.json(),roleOrder={center_admin:0,data_entry:1,viewer:2};const rows=(j.rows||[]).slice().sort((a,b)=>(a.center_name||'').localeCompare(b.center_name||'')-0||((roleOrder[a.center_role]??99)-(roleOrder[b.center_role]??99))||(a.name||a.email||'').localeCompare(b.name||b.email||''));
   const wrap=document.createElement('div');wrap.className='admin-intel-wrap';
   const table=document.createElement('table');
   const head=document.createElement('tr');
-  ['Name / email','Center','Role','Area of responsibility','Machines','Modeled capacity','Current utilization','Capacity / Logistic interpretation'].forEach(v=>{const th=document.createElement('th');th.textContent=v;head.appendChild(th)});
+  ['Center','Name / email','Role','Area of responsibility','Machines','Modeled capacity','Current utilization','Capacity / Logistic interpretation'].forEach(v=>{const th=document.createElement('th');th.textContent=v;head.appendChild(th)});
   table.appendChild(head);
   rows.forEach(x=>{
    const tr=document.createElement('tr');
    const vals=[
-    (x.name||'')+(x.email&&x.email!==x.name?'\n'+x.email:''),
-    x.center_name||'',x.center_role||'',
+    x.center_name||'',
+    (x.name||'')+(x.email&&x.email!==x.name?'\n'+x.email:''),x.center_role||'',
     (x.area_of_responsibility||[]).join(', ')||'—',
     (x.machine_count||0)+' machine(s)'+((x.machine_names||[]).length?'\n'+x.machine_names.join(', '):''),
     Number(x.modeled_capacity||0).toFixed(0)+' courses/year',
