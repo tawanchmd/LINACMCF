@@ -894,10 +894,15 @@ window.loadAdminCenterIntelligence=async function(){
   const head=document.createElement('tr');
   ['Center','Name / email','Role','Area of responsibility','Machines','Modeled capacity','Current utilization','Capacity / Logistic interpretation'].forEach(v=>{const th=document.createElement('th');th.textContent=v;head.appendChild(th)});
   table.appendChild(head);
-  rows.forEach(x=>{
-   const tr=document.createElement('tr');
+  let lastCenter=null,centerRowspan=0,centerCell=null;
+  rows.forEach((x,idx)=>{
+   const tr=document.createElement('tr'),centerName=x.center_name||'';
+   if(centerName!==lastCenter){
+    centerRowspan=rows.filter(y=>(y.center_name||'')===centerName).length;
+    centerCell=document.createElement('td');centerCell.textContent=centerName;centerCell.rowSpan=centerRowspan;centerCell.style.verticalAlign='top';centerCell.style.fontWeight='700';centerCell.style.whiteSpace='pre-line';tr.appendChild(centerCell);
+    lastCenter=centerName;
+   }
    const vals=[
-    x.center_name||'',
     (x.name||'')+(x.email&&x.email!==x.name?'\n'+x.email:''),x.center_role||'',
     (x.area_of_responsibility||[]).join(', ')||'—',
     (x.machine_count||0)+' machine(s)'+((x.machine_names||[]).length?'\n'+x.machine_names.join(', '):''),
@@ -905,7 +910,7 @@ window.loadAdminCenterIntelligence=async function(){
     x.current_utilization_pct==null?'—':Number(x.current_utilization_pct).toFixed(0)+'%',
     x.capacity_interpretation||'Insufficient data'
    ];
-   vals.forEach((v,i)=>{const td=document.createElement('td');td.textContent=v;td.style.whiteSpace=i===0||i===4?'pre-line':'normal';tr.appendChild(td)});
+   vals.forEach((v,i)=>{const td=document.createElement('td');td.textContent=v;td.style.whiteSpace=i===3?'pre-line':'normal';tr.appendChild(td)});
    table.appendChild(tr);
   });
   if(!rows.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=8;td.textContent='No approved center memberships yet.';tr.appendChild(td);table.appendChild(tr)}
