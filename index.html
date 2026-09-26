@@ -940,10 +940,15 @@ window.loadAdminCenterIntelligence=async function(){
    const roles=(me.memberships||[]).map(m=>m.role),viewerOnly=!me.system_admin&&roles.length>0&&roles.every(r=>r==='viewer');
    document.body.classList.toggle('viewer-readonly',viewerOnly);
    if(viewerOnly){
-     ['addMachineBtn','saveMachineVisibleBtn','saveMachineBtn','deleteSelectedMachineBtn','confirmAddMachineBtn','saveHistoryBtn','clearHistoryBtn','importHistoryExcelBtn','historyExcelFile','centerCountry','foreignAreas','foreignPopulation'].forEach(id=>{const el=document.getElementById(id);if(el)el.disabled=true});
-     document.querySelectorAll('input[name="allocationMode"],#thaiProvincePicker input,.allocation-percent-input').forEach(el=>el.disabled=true);
-     document.querySelectorAll('#capacityRows input,#capacityRows select,#capacityRows textarea,#calendarGrid input,#calendarGrid select,#calendarGrid textarea,#populationRows input,#populationRows select,#populationRows textarea').forEach(el=>el.disabled=true);
-     const note=document.getElementById('backendStatus');if(note)note.textContent='Connected • Viewer read-only';
+     window.viewerReadOnly=true;
+     const lockViewerWrites=()=>{
+       ['addMachineBtn','saveMachineVisibleBtn','saveMachineBtn','deleteSelectedMachineBtn','confirmAddMachineBtn','saveHistoryBtn','clearHistoryBtn','importHistoryExcelBtn','historyExcelFile','centerCountry','foreignAreas','foreignPopulation','historyFrom','historyFromPick','historyFromNative','historyTo','historyToPick','historyToNative'].forEach(id=>{const el=document.getElementById(id);if(el)el.disabled=true});
+       document.querySelectorAll('input[name="allocationMode"],#thaiProvincePicker input,.allocation-percent-input,#capacityRows input,#capacityRows select,#capacityRows textarea,#calendarGrid input,#calendarGrid select,#calendarGrid textarea,#populationRows input,#populationRows select,#populationRows textarea,#forecastPage input,#forecastPage select,#forecastPage textarea,#forecastPage button').forEach(el=>el.disabled=true);
+       ['forecastPage','centerPage','machinePage'].forEach(id=>{const root=document.getElementById(id);if(root)root.querySelectorAll('[contenteditable="true"]').forEach(el=>el.contentEditable='false')});
+       const note=document.getElementById('backendStatus');if(note)note.textContent='Connected • Viewer read-only';
+     };
+     lockViewerWrites();
+     new MutationObserver(lockViewerWrites).observe(document.getElementById('appMain')||document.body,{childList:true,subtree:true});
    }
    if(me.system_admin){
      document.body.classList.add('system-admin-mode');
