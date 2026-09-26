@@ -943,6 +943,18 @@ window.loadAdminCenterIntelligence=async function(){
        if(saved && document.getElementById(saved) && document.querySelector('#appNav button[data-page="'+saved+'"]')) resumePage=saved;
      }catch(_){}
      enterWorkspace(resumePage);
+     // The machine can be restored before the Forecast workspace is mounted/refreshed.
+     // Re-sync machine-dependent views after page restoration so F5 is self-contained.
+     if(resumePage==='forecastPage'){
+       setTimeout(()=>{
+         const fm=document.getElementById('forecastMachineName');
+         const machineEl=document.getElementById('machineSelect');
+         if(fm)fm.textContent=machineEl?.value||'No machine selected';
+         if(typeof renderCalendar==='function')renderCalendar();
+         if(typeof updateTrackerQa==='function')updateTrackerQa();
+         if(typeof updateDashboard==='function')updateDashboard();
+       },60);
+     }
    }
    if(me.system_admin){loadAdminRequests();window.adminRequestPoll=setInterval(loadAdminRequests,60000)}
    return true;
