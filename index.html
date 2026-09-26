@@ -805,6 +805,8 @@ document.addEventListener('click',function(e){
   }
   async function pushState(){
     if(!window.serverAuthenticated)return;
+    const u=window.currentServerUser,roles=(u?.memberships||[]).map(m=>m.role)||[];
+    if(u&&!u.system_admin&&roles.length>0&&roles.every(r=>r==='viewer'))return;
     if(syncing)return; syncing=true;
     try{
       const r=await fetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:snapshot()})});
@@ -935,6 +937,14 @@ window.loadAdminCenterIntelligence=async function(){
     }
    };
    window.updateIdentityHeader();
+   const roles=(me.memberships||[]).map(m=>m.role),viewerOnly=!me.system_admin&&roles.length>0&&roles.every(r=>r==='viewer');
+   document.body.classList.toggle('viewer-readonly',viewerOnly);
+   if(viewerOnly){
+     ['addMachineBtn','saveMachineVisibleBtn','saveMachineBtn','deleteSelectedMachineBtn','confirmAddMachineBtn','saveHistoryBtn','clearHistoryBtn','importHistoryExcelBtn','historyExcelFile','centerCountry','foreignAreas','foreignPopulation'].forEach(id=>{const el=document.getElementById(id);if(el)el.disabled=true});
+     document.querySelectorAll('input[name="allocationMode"],#thaiProvincePicker input,.allocation-percent-input').forEach(el=>el.disabled=true);
+     document.querySelectorAll('#capacityRows input,#capacityRows select,#capacityRows textarea,#calendarGrid input,#calendarGrid select,#calendarGrid textarea,#populationRows input,#populationRows select,#populationRows textarea').forEach(el=>el.disabled=true);
+     const note=document.getElementById('backendStatus');if(note)note.textContent='Connected • Viewer read-only';
+   }
    if(me.system_admin){
      document.body.classList.add('system-admin-mode');
      const nav=document.getElementById('appNav');
