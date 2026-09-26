@@ -784,13 +784,20 @@ document.addEventListener('click',function(e){
       const j=await r.json(), p=j.payload;
       const localHas=!!localStorage.getItem(CENTER_STORAGE)||!!localStorage.getItem(MACHINE_STORAGE);
       const serverHas=!!(p&&(p.centers||p.machines||Object.keys(p.histories||{}).length));
-      if(!localHas&&serverHas&&!sessionStorage.getItem('v5hydrated')){
-        if(p.centers)localStorage.setItem(CENTER_STORAGE,p.centers);
-        if(p.machines)localStorage.setItem(MACHINE_STORAGE,p.machines);
-        Object.entries(p.histories||{}).forEach(([k,v])=>localStorage.setItem(k,v));
-        sessionStorage.setItem('v5hydrated','1'); location.reload(); return;
-      }
-      if(localHas&&!serverHas) queueSync();
+      // Authenticated server state is authoritative. Always merge the user's saved
+      // centers/machines into memory, independent of whichever machine is selected
+      // in the Machine workspace. This makes national roll-up use every saved machine.
+      if(serverHas){
+        try{
+          const sc=typeof p.centers==='string'?JSON.parse(p.centers||'{}'):(p.centers||{});
+          const sm=typeof p.machines==='string'?JSON.parse(p.machines||'{}'):(p.machines||{});
+          Object.assign(centers,sc);Object.assign(machines,sm);
+          localStorage.setItem(CENTER_STORAGE,JSON.stringify(centers));
+          localStorage.setItem(MACHINE_STORAGE,JSON.stringify(machines));
+          Object.entries(p.histories||{}).forEach(([k,v])=>localStorage.setItem(k,v));
+          refreshLists();renderDataManager();
+        }catch(e){console.warn('Saved machine hydration warning',e)}
+      }else if(localHas) queueSync();
       if($('backendStatus')) $('backendStatus').textContent='Connected • server persistence';
     }catch(e){}
   }
