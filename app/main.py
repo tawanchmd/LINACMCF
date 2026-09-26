@@ -410,6 +410,12 @@ def get_state(u:User=Depends(current_user),s:Session=Depends(db)):
 
 @app.put("/api/state")
 def put_state(x:StateIn,u:User=Depends(current_user),s:Session=Depends(db)):
+    # Browser workspace persistence is a write path. Viewers are read-only.
+    # System admins retain access; center users need a writable role in at least one membership.
+    if not u.is_system_admin:
+        roles={m.role for m in memberships(s,u)}
+        if not roles.intersection({"center_admin","data_entry"}):
+            raise HTTPException(403,"Viewer access is read-only")
     raw=json.dumps(x.payload,separators=(",",":"),ensure_ascii=False)
     if len(raw)>5_000_000: raise HTTPException(413,"State payload too large")
     key=f"browser-v5:user:{u.id}"
