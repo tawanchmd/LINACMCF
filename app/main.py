@@ -286,10 +286,14 @@ def _national_rollup_rows(s:Session):
             row=merged.setdefault(key,{"center_id":sid,"center_name":center.get("center") or ck,
                 "population":center.get("population") or {},"service_area":center.get("serviceArea") or {},
                 "machines":{},"history_totals":[],"updated_at":str(st.updated_at or "")})
-            # Prefer the most recently encountered non-empty center metadata.
-            if center.get("population"): row["population"]=center.get("population")
-            if center.get("serviceArea"): row["service_area"]=center.get("serviceArea")
-            if str(st.updated_at or "")>=row.get("updated_at",""): row["updated_at"]=str(st.updated_at or "")
+            # Prefer center metadata from the newest persisted workspace only.
+            # Multiple users can carry snapshots of the same center; an older snapshot
+            # must never overwrite a newer service area/allocation.
+            incoming_updated=str(st.updated_at or "")
+            if incoming_updated>=row.get("updated_at",""):
+                if center.get("population"): row["population"]=center.get("population")
+                if center.get("serviceArea"): row["service_area"]=center.get("serviceArea")
+                row["updated_at"]=incoming_updated
             for mk,m in ms.items():
                 if not isinstance(m,dict): continue
                 mck=str(m.get("centerKey") or "").strip().lower()
