@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from sqlalchemy import select, text
+from sqlalchemy import select, text, inspect
 from starlette.middleware.sessions import SessionMiddleware
 from pwdlib import PasswordHash
 from .db import Base, engine, SessionLocal
@@ -20,9 +20,20 @@ def db():
     try: yield s
     finally: s.close()
 
+def migrate_schema():
+    """Small idempotent migrations for deployments that predate a migration framework."""
+    Base.metadata.create_all(engine)
+    inspector=inspect(engine)
+    center_columns={col["name"] for col in inspector.get_columns("centers")}
+    if "is_active" not in center_columns:
+        # SQLite and PostgreSQL both accept this additive, non-destructive migration.
+        # Existing centers are active by default; no rows are deleted or rewritten.
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE centers ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE"))
+
 @app.on_event("startup")
 def startup():
-    Base.metadata.create_all(engine)
+    migrate_schema()
 
 class LoginIn(BaseModel): email:str; password:str
 class SignupIn(BaseModel): full_name:str=Field(min_length=2,max_length=180); email:str; password:str=Field(min_length=12,max_length=128)
