@@ -38,5 +38,6 @@ class MigrationFrameworkTests(unittest.TestCase):
    with eng.connect() as conn:
     from sqlalchemy import text
     self.assertEqual(conn.execute(text("select version_num from alembic_version")).scalar(),"20260927_01")
+   eng.dispose()
 
 if __name__=="__main__": unittest.main()
