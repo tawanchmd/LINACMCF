@@ -81,6 +81,8 @@ def center_role(s,u,center_id):
     return m.role if m else None
 
 def can_center(s,u,center_id,action="read"):
+    ctr=s.get(Center,center_id)
+    if not ctr or not ctr.is_active: return False
     role=center_role(s,u,center_id)
     if role=="system_admin": return True
     if action=="read": return role in ("center_admin","data_entry","viewer")
@@ -277,7 +279,7 @@ def center_remove_member(center_id:int,user_id:int,u:User=Depends(current_user),
 
 @app.get("/api/onboarding/centers")
 def onboarding_centers(u:User=Depends(current_user),s:Session=Depends(db)):
-    return [{"id":c.id,"name":c.name,"country":c.country} for c in s.scalars(select(Center).order_by(Center.name)).all()]
+    return [{"id":c.id,"name":c.name,"country":c.country} for c in s.scalars(select(Center).where(Center.is_active.is_(True)).order_by(Center.name)).all()]
 
 @app.post("/api/onboarding/request")
 def onboarding_request(x:AccessRequestIn,u:User=Depends(current_user),s:Session=Depends(db)):
@@ -287,7 +289,9 @@ def onboarding_request(x:AccessRequestIn,u:User=Depends(current_user),s:Session=
     if x.request_type not in ("new_center","join_center"): raise HTTPException(422,"Invalid request type")
     center_id=None; center_name=None
     if x.request_type=="join_center":
-        if not x.center_id or not s.get(Center,x.center_id): raise HTTPException(404,"Center not found")
+        ctr=s.get(Center,x.center_id) if x.center_id else None
+        if not ctr: raise HTTPException(404,"Center not found")
+        if not ctr.is_active: raise HTTPException(409,"Cannot request access to an archived center")
         center_id=x.center_id
     else:
         center_name=(x.center_name or "").strip()
@@ -318,7 +322,9 @@ def admin_approve_access(request_id:int,u:User=Depends(current_user),s:Session=D
         center=Center(name=name,country=r.requested_country or "Thailand"); s.add(center); s.flush(); center_id=center.id
     else:
         center_id=r.center_id
-        if not center_id or not s.get(Center,center_id): raise HTTPException(404,"Center not found")
+        ctr=s.get(Center,center_id) if center_id else None
+        if not ctr: raise HTTPException(404,"Center not found")
+        if not ctr.is_active: raise HTTPException(409,"Cannot approve access to an archived center")
     s.add(CenterMembership(user_id=r.user_id,center_id=center_id,role="center_admin" if r.request_type=="new_center" else "viewer"))
     r.status="approved"; audit(s,u,"access.approve",center_id,f"request_id={r.id}; user_id={r.user_id}"); s.commit()
     return {"ok":True,"center_id":center_id,"role":"center_admin" if r.request_type=="new_center" else "viewer"}
@@ -595,7 +601,7 @@ def forecast_api(x:ForecastIn,u:User=Depends(current_user)):
 
 def _report_snapshot_for_user(s,u):
     """Read-only adapter for Center Report. Never mutates AppState/core workspace."""
-    ms=memberships(s,u)
+    ms=[m for m in memberships(s,u) if (s.get(Center,m.center_id) and s.get(Center,m.center_id).is_active)]
     if u.is_system_admin:
         raise HTTPException(403,"Center Report is for center-scoped users")
     if not ms: raise HTTPException(403,"No center membership")
