@@ -40,6 +40,7 @@ class SignupIn(BaseModel): full_name:str=Field(min_length=2,max_length=180); ema
 class AccessRequestIn(BaseModel): request_type:str; center_id:int|None=None; center_name:str|None=Field(None,max_length=180); country:str="Thailand"
 class SetupIn(BaseModel): email:str; password:str=Field(min_length=12,max_length=128)
 class UserCreateIn(BaseModel): email:str; password:str=Field(min_length=12,max_length=128)
+class AdminUserStatusIn(BaseModel): is_active:bool
 class MembershipIn(BaseModel): user_id:int; center_id:int; role:str
 class CenterMemberAddIn(BaseModel): email:str; role:str="viewer"
 class PasswordChangeIn(BaseModel): current_password:str; new_password:str=Field(min_length=12,max_length=128)
@@ -144,7 +145,24 @@ def change_password(x:PasswordChangeIn,u:User=Depends(current_user),s:Session=De
 @app.get("/api/admin/users")
 def admin_users(u:User=Depends(current_user),s:Session=Depends(db)):
     if not u.is_system_admin: raise HTTPException(403,"System admin required")
-    return [{"id":x.id,"email":x.email,"is_active":x.is_active,"is_system_admin":x.is_system_admin} for x in s.scalars(select(User).order_by(User.email)).all()]
+    rows=s.execute(select(User,UserProfile).outerjoin(UserProfile,UserProfile.user_id==User.id).order_by(User.email)).all()
+    out=[]
+    for x,p in rows:
+        ms=s.scalars(select(CenterMembership).where(CenterMembership.user_id==x.id)).all()
+        out.append({"id":x.id,"email":x.email,"full_name":p.full_name if p else None,"is_active":x.is_active,"is_system_admin":x.is_system_admin,
+                    "memberships":[{"center_id":m.center_id,"center_name":(s.get(Center,m.center_id).name if s.get(Center,m.center_id) else None),"role":m.role} for m in ms]})
+    return out
+
+@app.patch("/api/admin/users/{user_id}/status")
+def admin_user_status(user_id:int,x:AdminUserStatusIn,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    target=s.get(User,user_id)
+    if not target: raise HTTPException(404,"User not found")
+    if target.id==u.id and not x.is_active: raise HTTPException(409,"You cannot deactivate your own System Admin account")
+    target.is_active=x.is_active
+    audit(s,u,"user.activate" if x.is_active else "user.deactivate",detail=f"user_id={target.id}")
+    s.commit()
+    return {"ok":True,"user_id":target.id,"is_active":target.is_active}
 
 @app.post("/api/admin/users")
 def admin_create_user(x:UserCreateIn,u:User=Depends(current_user),s:Session=Depends(db)):
@@ -162,9 +180,24 @@ def admin_membership(x:MembershipIn,u:User=Depends(current_user),s:Session=Depen
     if x.role not in ("center_admin","data_entry","viewer"): raise HTTPException(422,"Invalid role")
     if not s.get(User,x.user_id) or not s.get(Center,x.center_id): raise HTTPException(404,"User or center not found")
     m=s.scalar(select(CenterMembership).where(CenterMembership.user_id==x.user_id,CenterMembership.center_id==x.center_id))
-    if m: m.role=x.role
+    if m:
+        if m.role=="center_admin" and x.role!="center_admin":
+            admins=s.scalars(select(CenterMembership).where(CenterMembership.center_id==x.center_id,CenterMembership.role=="center_admin")).all()
+            if len(admins)<=1: raise HTTPException(409,"A center must keep at least one Center Admin")
+        m.role=x.role
     else: s.add(CenterMembership(user_id=x.user_id,center_id=x.center_id,role=x.role))
     audit(s,u,"membership.upsert",x.center_id,f"user_id={x.user_id}; role={x.role}"); s.commit()
+    return {"ok":True}
+
+@app.delete("/api/admin/memberships/{center_id}/{user_id}")
+def admin_remove_membership(center_id:int,user_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    m=s.scalar(select(CenterMembership).where(CenterMembership.user_id==user_id,CenterMembership.center_id==center_id))
+    if not m: raise HTTPException(404,"Center membership not found")
+    if m.role=="center_admin":
+        admins=s.scalars(select(CenterMembership).where(CenterMembership.center_id==center_id,CenterMembership.role=="center_admin")).all()
+        if len(admins)<=1: raise HTTPException(409,"A center must keep at least one Center Admin")
+    s.delete(m); audit(s,u,"membership.remove",center_id,f"user_id={user_id}"); s.commit()
     return {"ok":True}
 
 @app.get("/api/centers/{center_id}/members")
