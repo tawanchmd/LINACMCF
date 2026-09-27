@@ -3,18 +3,21 @@
 Run:
     python -m unittest tests.test_v57_center_admin -v
 """
-import os, tempfile, unittest
-from pathlib import Path
+import os,tempfile,unittest
 
 class CenterAdminPhase1Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp=tempfile.TemporaryDirectory()
-        cls.db_path=Path(cls.tmp.name)/"v57.sqlite"
-        os.environ["DATABASE_URL"]="sqlite:///"+str(cls.db_path).replace("\\","/")
-        os.environ["SESSION_SECRET"]="v57-test-secret"
         from fastapi.testclient import TestClient
         from app.main import app
+        from app import db as dbmod
+        from sqlalchemy import create_engine
+        cls.db_path=os.path.join(cls.tmp.name,"v57.sqlite")
+        test_engine=create_engine("sqlite:///"+cls.db_path.replace("\\","/"),connect_args={"check_same_thread":False})
+        dbmod.engine=test_engine; dbmod.SessionLocal.configure(bind=test_engine)
+        import app.main as mainmod
+        mainmod.engine=test_engine
         cls.client=TestClient(app)
         cls.ctx=cls.client.__enter__()
         r=cls.client.post("/api/auth/setup",json={"email":"admin@test.local","password":"AdminPassword123!"})
