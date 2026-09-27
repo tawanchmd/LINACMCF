@@ -11,8 +11,15 @@ from pwdlib import PasswordHash
 from .db import Base, engine, SessionLocal
 from .models import Center, Machine, DailyHistory, AppState, User, CenterMembership, AuditLog, UserProfile, AccessRequest
 
-app = FastAPI(title="LINAC Machine Carrying Capacity API", version="5.7")
-app.add_middleware(SessionMiddleware,secret_key=os.environ.get("SESSION_SECRET") or __import__("hashlib").sha256((os.environ.get("DATABASE_URL","linacmcf-local")+"|session").encode()).hexdigest(),https_only=os.environ.get("APP_ENV")=="production",same_site="lax",max_age=28800)
+app = FastAPI(title="LINAC Machine Carrying Capacity API", version="5.8")
+_app_env=os.environ.get("APP_ENV","").strip().lower()
+_session_secret=os.environ.get("SESSION_SECRET","").strip()
+if _app_env=="production" and not _session_secret:
+    raise RuntimeError("SESSION_SECRET is required when APP_ENV=production")
+if not _session_secret:
+    # Local/test convenience only. Production must always provide an explicit secret.
+    _session_secret=__import__("hashlib").sha256((os.environ.get("DATABASE_URL","linacmcf-local")+"|session").encode()).hexdigest()
+app.add_middleware(SessionMiddleware,secret_key=_session_secret,https_only=_app_env=="production",same_site="lax",max_age=28800)
 password_hash=PasswordHash.recommended()
 
 def db():
@@ -86,7 +93,7 @@ def audit(s,u,action,center_id=None,detail=None):
 
 @app.get("/health")
 def health(s:Session=Depends(db)):
-    s.execute(text("SELECT 1")); return {"status":"ok","database":"connected","ui":"v5.7","auth":"rbac","isolation":"per-user/per-center"}
+    s.execute(text("SELECT 1")); return {"status":"ok","database":"connected","ui":"v5.8","auth":"rbac","isolation":"per-user/per-center"}
 
 @app.get("/api/auth/setup-status")
 def setup_status(s:Session=Depends(db)):
@@ -159,6 +166,10 @@ def admin_user_status(user_id:int,x:AdminUserStatusIn,u:User=Depends(current_use
     target=s.get(User,user_id)
     if not target: raise HTTPException(404,"User not found")
     if target.id==u.id and not x.is_active: raise HTTPException(409,"You cannot deactivate your own System Admin account")
+    if target.is_system_admin and not x.is_active:
+        active_system_admins=s.scalars(select(User).where(User.is_system_admin==True,User.is_active==True)).all()
+        if len(active_system_admins)<=1:
+            raise HTTPException(409,"At least one active System Admin must remain")
     if not x.is_active:
         admin_memberships=s.scalars(select(CenterMembership).where(CenterMembership.user_id==target.id,CenterMembership.role=="center_admin")).all()
         for m in admin_memberships:
