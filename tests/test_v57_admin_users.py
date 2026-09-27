@@ -1,12 +1,18 @@
 """v5.7 Phase 2 System Admin user / role safety tests."""
-import os,tempfile,unittest
-from pathlib import Path
+import os,tempfile,unittest,subprocess,sys
 
 class AdminUserRoleTests(unittest.TestCase):
  @classmethod
  def setUpClass(cls):
-  cls.tmp=tempfile.TemporaryDirectory(); cls.db_path=Path(cls.tmp.name)/"v57users.sqlite"
-  os.environ["DATABASE_URL"]="sqlite:///"+str(cls.db_path).replace("\\","/"); os.environ["SESSION_SECRET"]="v57-users-test"
+  # app.db binds DATABASE_URL at import time. When this module is run after
+  # another DB-isolated test module in the same unittest process, run this
+  # suite in a fresh interpreter so it gets its own engine cleanly.
+  if "app.db" in sys.modules:
+   r=subprocess.run([sys.executable,"-m","unittest",__name__,"-v"],env=os.environ.copy())
+   if r.returncode: raise RuntimeError("isolated admin user tests failed")
+   raise unittest.SkipTest("completed in isolated subprocess")
+  cls.tmp=tempfile.TemporaryDirectory(); cls.db_path=os.path.join(cls.tmp.name,"v57users.sqlite")
+  os.environ["DATABASE_URL"]="sqlite:///"+cls.db_path.replace("\\","/"); os.environ["SESSION_SECRET"]="v57-users-test"
   from fastapi.testclient import TestClient
   from app.main import app
   cls.client=TestClient(app); cls.client.__enter__()
