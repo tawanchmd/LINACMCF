@@ -1,4 +1,5 @@
 from datetime import date
+from contextlib import asynccontextmanager
 import json, math, os
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
@@ -11,7 +12,12 @@ from pwdlib import PasswordHash
 from .db import Base, engine, SessionLocal
 from .models import Center, Machine, DailyHistory, AppState, User, CenterMembership, AuditLog, UserProfile, AccessRequest
 
-app = FastAPI(title="LINAC Machine Carrying Capacity API", version="5.8")
+@asynccontextmanager
+async def lifespan(app:FastAPI):
+    migrate_schema()
+    yield
+
+app = FastAPI(title="LINAC Machine Carrying Capacity API", version="5.8", lifespan=lifespan)
 _app_env=os.environ.get("APP_ENV","").strip().lower()
 _session_secret=os.environ.get("SESSION_SECRET","").strip()
 if _app_env=="production" and not _session_secret:
@@ -37,10 +43,6 @@ def migrate_schema():
         # Existing centers are active by default; no rows are deleted or rewritten.
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE centers ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE"))
-
-@app.on_event("startup")
-def startup():
-    migrate_schema()
 
 class LoginIn(BaseModel): email:str; password:str
 class SignupIn(BaseModel): full_name:str=Field(min_length=2,max_length=180); email:str; password:str=Field(min_length=12,max_length=128)
@@ -150,6 +152,21 @@ def change_password(x:PasswordChangeIn,u:User=Depends(current_user),s:Session=De
     if not password_hash.verify(x.current_password,u.password_hash): raise HTTPException(401,"Current password is incorrect")
     u.password_hash=password_hash.hash(x.new_password); audit(s,u,"password.change"); s.commit()
     return {"ok":True}
+
+@app.get("/api/admin/audit-logs")
+def admin_audit_logs(limit:int=100,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    limit=max(1,min(limit,500))
+    rows=s.scalars(select(AuditLog).order_by(AuditLog.created_at.desc(),AuditLog.id.desc()).limit(limit)).all()
+    out=[]
+    for row in rows:
+        actor=s.get(User,row.user_id) if row.user_id else None
+        ctr=s.get(Center,row.center_id) if row.center_id else None
+        out.append({"id":row.id,"created_at":row.created_at.isoformat() if row.created_at else None,
+                    "user_id":row.user_id,"user_email":actor.email if actor else None,
+                    "center_id":row.center_id,"center_name":ctr.name if ctr else None,
+                    "action":row.action,"detail":row.detail})
+    return out
 
 @app.get("/api/admin/users")
 def admin_users(u:User=Depends(current_user),s:Session=Depends(db)):
