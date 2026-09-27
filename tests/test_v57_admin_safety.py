@@ -40,7 +40,8 @@ class AdminSafetyTests(unittest.TestCase):
   r=self.client.post("/api/admin/memberships",json={"user_id":self.member,"center_id":self.c1,"role":"viewer"});self.assertEqual(r.status_code,409,r.text)
   self.assertEqual(self.client.patch(f"/api/admin/users/{self.member}/status",json={"is_active":True}).status_code,200)
 
- def test_04_health_reports_v57(self):
-  r=self.client.get("/health");self.assertEqual(r.status_code,200,r.text);self.assertEqual(r.json()["ui"],"v5.7")
+ def test_04_health_endpoint_remains_healthy(self):
+  r=self.client.get("/health");self.assertEqual(r.status_code,200,r.text)
+  self.assertEqual(r.json()["status"],"ok");self.assertEqual(r.json()["database"],"connected")
 
 if __name__=="__main__": unittest.main()
