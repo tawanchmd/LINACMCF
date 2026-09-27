@@ -23,6 +23,8 @@ class CenterAdminPhase1Tests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.client.__exit__(None,None,None)
+        from app.db import engine
+        engine.dispose()
         cls.tmp.cleanup()
 
     def test_01_migration_is_idempotent_and_existing_centers_default_active(self):
