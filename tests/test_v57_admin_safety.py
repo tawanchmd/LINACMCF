@@ -1,17 +1,19 @@
 """v5.7 Phase 3 administration safety regression tests."""
-import os,tempfile,unittest,subprocess,sys
+import os,tempfile,unittest
 
 class AdminSafetyTests(unittest.TestCase):
  @classmethod
  def setUpClass(cls):
-  if "app.db" in sys.modules:
-   r=subprocess.run([sys.executable,"-m","unittest",__name__,"-v"],env=os.environ.copy())
-   if r.returncode: raise RuntimeError("isolated admin safety tests failed")
-   raise unittest.SkipTest("completed in isolated subprocess")
-  cls.tmp=tempfile.TemporaryDirectory(); p=os.path.join(cls.tmp.name,"safety.sqlite")
-  os.environ["DATABASE_URL"]="sqlite:///"+p.replace("\\","/");os.environ["SESSION_SECRET"]="v57-safety"
+  cls.tmp=tempfile.TemporaryDirectory()
   from fastapi.testclient import TestClient
   from app.main import app
+  from app import db as dbmod
+  from sqlalchemy import create_engine
+  p=os.path.join(cls.tmp.name,"safety.sqlite")
+  test_engine=create_engine("sqlite:///"+p.replace("\\","/"),connect_args={"check_same_thread":False})
+  dbmod.engine=test_engine; dbmod.SessionLocal.configure(bind=test_engine)
+  import app.main as mainmod
+  mainmod.engine=test_engine
   cls.client=TestClient(app);cls.client.__enter__()
   a=cls.client.post("/api/auth/setup",json={"email":"admin@test.local","password":"AdminPassword123!"}).json();cls.admin=a["user"]["id"]
   cls.c1=cls.client.post("/api/centers",json={"name":"Safety Center","country":"Thailand"}).json()["id"]
