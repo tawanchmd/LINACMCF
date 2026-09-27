@@ -1,20 +1,19 @@
 """v5.7 Phase 2 System Admin user / role safety tests."""
-import os,tempfile,unittest,subprocess,sys
+import os,tempfile,unittest
 
 class AdminUserRoleTests(unittest.TestCase):
  @classmethod
  def setUpClass(cls):
-  # app.db binds DATABASE_URL at import time. When this module is run after
-  # another DB-isolated test module in the same unittest process, run this
-  # suite in a fresh interpreter so it gets its own engine cleanly.
-  if "app.db" in sys.modules:
-   r=subprocess.run([sys.executable,"-m","unittest",__name__,"-v"],env=os.environ.copy())
-   if r.returncode: raise RuntimeError("isolated admin user tests failed")
-   raise unittest.SkipTest("completed in isolated subprocess")
-  cls.tmp=tempfile.TemporaryDirectory(); cls.db_path=os.path.join(cls.tmp.name,"v57users.sqlite")
-  os.environ["DATABASE_URL"]="sqlite:///"+cls.db_path.replace("\\","/"); os.environ["SESSION_SECRET"]="v57-users-test"
+  cls.tmp=tempfile.TemporaryDirectory()
   from fastapi.testclient import TestClient
   from app.main import app
+  from app import db as dbmod
+  from sqlalchemy import create_engine
+  cls.db_path=os.path.join(cls.tmp.name,"v57users.sqlite")
+  test_engine=create_engine("sqlite:///"+cls.db_path.replace("\\","/"),connect_args={"check_same_thread":False})
+  dbmod.engine=test_engine; dbmod.SessionLocal.configure(bind=test_engine)
+  import app.main as mainmod
+  mainmod.engine=test_engine
   cls.client=TestClient(app); cls.client.__enter__()
   r=cls.client.post("/api/auth/setup",json={"email":"admin@test.local","password":"AdminPassword123!"}); assert r.status_code==200,r.text
   cls.admin_id=r.json()["user"]["id"]
