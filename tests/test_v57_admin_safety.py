@@ -1,12 +1,15 @@
 """v5.7 Phase 3 administration safety regression tests."""
-import os,tempfile,unittest
-from pathlib import Path
+import os,tempfile,unittest,subprocess,sys
 
 class AdminSafetyTests(unittest.TestCase):
  @classmethod
  def setUpClass(cls):
-  cls.tmp=tempfile.TemporaryDirectory(); p=Path(cls.tmp.name)/"safety.sqlite"
-  os.environ["DATABASE_URL"]="sqlite:///"+str(p).replace("\\","/");os.environ["SESSION_SECRET"]="v57-safety"
+  if "app.db" in sys.modules:
+   r=subprocess.run([sys.executable,"-m","unittest",__name__,"-v"],env=os.environ.copy())
+   if r.returncode: raise RuntimeError("isolated admin safety tests failed")
+   raise unittest.SkipTest("completed in isolated subprocess")
+  cls.tmp=tempfile.TemporaryDirectory(); p=os.path.join(cls.tmp.name,"safety.sqlite")
+  os.environ["DATABASE_URL"]="sqlite:///"+p.replace("\\","/");os.environ["SESSION_SECRET"]="v57-safety"
   from fastapi.testclient import TestClient
   from app.main import app
   cls.client=TestClient(app);cls.client.__enter__()
