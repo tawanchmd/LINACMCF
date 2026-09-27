@@ -11,7 +11,7 @@ from pwdlib import PasswordHash
 from .db import Base, engine, SessionLocal
 from .models import Center, Machine, DailyHistory, AppState, User, CenterMembership, AuditLog, UserProfile, AccessRequest
 
-app = FastAPI(title="LINAC Machine Carrying Capacity API", version="0.5.1")
+app = FastAPI(title="LINAC Machine Carrying Capacity API", version="5.7")
 app.add_middleware(SessionMiddleware,secret_key=os.environ.get("SESSION_SECRET") or __import__("hashlib").sha256((os.environ.get("DATABASE_URL","linacmcf-local")+"|session").encode()).hexdigest(),https_only=os.environ.get("APP_ENV")=="production",same_site="lax",max_age=28800)
 password_hash=PasswordHash.recommended()
 
@@ -86,7 +86,7 @@ def audit(s,u,action,center_id=None,detail=None):
 
 @app.get("/health")
 def health(s:Session=Depends(db)):
-    s.execute(text("SELECT 1")); return {"status":"ok","database":"connected","ui":"v5.1","auth":"rbac","isolation":"per-user/per-center"}
+    s.execute(text("SELECT 1")); return {"status":"ok","database":"connected","ui":"v5.7","auth":"rbac","isolation":"per-user/per-center"}
 
 @app.get("/api/auth/setup-status")
 def setup_status(s:Session=Depends(db)):
@@ -159,6 +159,14 @@ def admin_user_status(user_id:int,x:AdminUserStatusIn,u:User=Depends(current_use
     target=s.get(User,user_id)
     if not target: raise HTTPException(404,"User not found")
     if target.id==u.id and not x.is_active: raise HTTPException(409,"You cannot deactivate your own System Admin account")
+    if not x.is_active:
+        admin_memberships=s.scalars(select(CenterMembership).where(CenterMembership.user_id==target.id,CenterMembership.role=="center_admin")).all()
+        for m in admin_memberships:
+            admins=s.scalars(select(CenterMembership).where(CenterMembership.center_id==m.center_id,CenterMembership.role=="center_admin")).all()
+            active_admins=[a for a in admins if (s.get(User,a.user_id) and s.get(User,a.user_id).is_active)]
+            if len(active_admins)<=1:
+                ctr=s.get(Center,m.center_id)
+                raise HTTPException(409,f"Cannot deactivate the last active Center Admin for {ctr.name if ctr else 'this center'}")
     target.is_active=x.is_active
     audit(s,u,"user.activate" if x.is_active else "user.deactivate",detail=f"user_id={target.id}")
     s.commit()
@@ -178,7 +186,10 @@ def admin_create_user(x:UserCreateIn,u:User=Depends(current_user),s:Session=Depe
 def admin_membership(x:MembershipIn,u:User=Depends(current_user),s:Session=Depends(db)):
     if not u.is_system_admin: raise HTTPException(403,"System admin required")
     if x.role not in ("center_admin","data_entry","viewer"): raise HTTPException(422,"Invalid role")
-    if not s.get(User,x.user_id) or not s.get(Center,x.center_id): raise HTTPException(404,"User or center not found")
+    target=s.get(User,x.user_id); ctr=s.get(Center,x.center_id)
+    if not target or not ctr: raise HTTPException(404,"User or center not found")
+    if not target.is_active: raise HTTPException(409,"Cannot add or change membership for an inactive user")
+    if not ctr.is_active: raise HTTPException(409,"Cannot add or change membership for an archived center")
     m=s.scalar(select(CenterMembership).where(CenterMembership.user_id==x.user_id,CenterMembership.center_id==x.center_id))
     if m:
         if m.role=="center_admin" and x.role!="center_admin":
