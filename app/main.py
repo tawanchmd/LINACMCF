@@ -33,6 +33,9 @@ class MembershipIn(BaseModel): user_id:int; center_id:int; role:str
 class CenterMemberAddIn(BaseModel): email:str; role:str="viewer"
 class PasswordChangeIn(BaseModel): current_password:str; new_password:str=Field(min_length=12,max_length=128)
 class CenterIn(BaseModel): name:str; country:str="Thailand"
+class CenterAdminUpdateIn(BaseModel):
+    name:str|None=Field(None,min_length=2,max_length=180)
+    country:str|None=Field(None,min_length=2,max_length=80)
 class HistoryRowIn(BaseModel): date:date; new_patients:int=Field(ge=0); active_patients:int=Field(ge=0)
 class MachineIn(BaseModel):
     center_id:int; name:str; model:str|None=None; operating_minutes:float|None=None; idle_minutes:float|None=None
@@ -271,7 +274,64 @@ def security_health(s:Session=Depends(db)):
 def centers(u:User=Depends(current_user),s:Session=Depends(db)):
     if u.is_system_admin: return s.scalars(select(Center).order_by(Center.name)).all()
     ids=[m.center_id for m in memberships(s,u)]
-    return s.scalars(select(Center).where(Center.id.in_(ids)).order_by(Center.name)).all() if ids else []
+    return s.scalars(select(Center).where(Center.id.in_(ids),Center.is_active.is_(True)).order_by(Center.name)).all() if ids else []
+
+@app.get("/api/admin/centers")
+def admin_centers(u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    out=[]
+    for ctr in s.scalars(select(Center).order_by(Center.name)).all():
+        machine_count=s.scalar(select(__import__("sqlalchemy").func.count(Machine.id)).where(Machine.center_id==ctr.id)) or 0
+        member_count=s.scalar(select(__import__("sqlalchemy").func.count(CenterMembership.id)).where(CenterMembership.center_id==ctr.id)) or 0
+        history_count=s.scalar(select(__import__("sqlalchemy").func.count(DailyHistory.id)).join(Machine,Machine.id==DailyHistory.machine_id).where(Machine.center_id==ctr.id)) or 0
+        out.append({"id":ctr.id,"name":ctr.name,"country":ctr.country,"is_active":ctr.is_active,
+                    "machine_count":machine_count,"member_count":member_count,"history_count":history_count})
+    return out
+
+@app.patch("/api/admin/centers/{center_id}")
+def admin_update_center(center_id:int,x:CenterAdminUpdateIn,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    ctr=s.get(Center,center_id)
+    if not ctr: raise HTTPException(404,"Center not found")
+    if x.name is not None:
+        name=x.name.strip()
+        duplicate=s.scalar(select(Center).where(Center.name==name,Center.id!=center_id))
+        if duplicate: raise HTTPException(409,"Center name already exists")
+        ctr.name=name
+    if x.country is not None: ctr.country=x.country.strip()
+    audit(s,u,"center.update",center_id,f"name={ctr.name}; country={ctr.country}")
+    s.commit(); s.refresh(ctr)
+    return {"id":ctr.id,"name":ctr.name,"country":ctr.country,"is_active":ctr.is_active}
+
+@app.post("/api/admin/centers/{center_id}/archive")
+def admin_archive_center(center_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    ctr=s.get(Center,center_id)
+    if not ctr: raise HTTPException(404,"Center not found")
+    if not ctr.is_active: return {"ok":True,"id":ctr.id,"is_active":False}
+    ctr.is_active=False; audit(s,u,"center.archive",center_id,ctr.name); s.commit()
+    return {"ok":True,"id":ctr.id,"is_active":False}
+
+@app.post("/api/admin/centers/{center_id}/restore")
+def admin_restore_center(center_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    ctr=s.get(Center,center_id)
+    if not ctr: raise HTTPException(404,"Center not found")
+    ctr.is_active=True; audit(s,u,"center.restore",center_id,ctr.name); s.commit()
+    return {"ok":True,"id":ctr.id,"is_active":True}
+
+@app.delete("/api/admin/centers/{center_id}")
+def admin_delete_empty_center(center_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not u.is_system_admin: raise HTTPException(403,"System admin required")
+    ctr=s.get(Center,center_id)
+    if not ctr: raise HTTPException(404,"Center not found")
+    machines=s.scalar(select(__import__("sqlalchemy").func.count(Machine.id)).where(Machine.center_id==center_id)) or 0
+    members=s.scalar(select(__import__("sqlalchemy").func.count(CenterMembership.id)).where(CenterMembership.center_id==center_id)) or 0
+    histories=s.scalar(select(__import__("sqlalchemy").func.count(DailyHistory.id)).join(Machine,Machine.id==DailyHistory.machine_id).where(Machine.center_id==center_id)) or 0
+    if machines or members or histories:
+        raise HTTPException(409,f"Center is not empty (members={members}, machines={machines}, history_rows={histories}). Archive it instead.")
+    name=ctr.name; s.delete(ctr); audit(s,u,"center.delete",center_id,name); s.commit()
+    return {"ok":True,"deleted_center_id":center_id}
 
 @app.post("/api/centers")
 def create_center(x:CenterIn,u:User=Depends(current_user),s:Session=Depends(db)):
