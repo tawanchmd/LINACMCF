@@ -16,7 +16,7 @@ class MigrationFrameworkTests(unittest.TestCase):
   self.assertIn('os.getenv("DATABASE_URL"',text)
   self.assertIn("target_metadata=Base.metadata",text)
 
- def test_03_upgrade_head_creates_only_version_marker_on_existing_schema(self):
+ def test_03_upgrade_head_adds_v59_center_state_without_touching_existing_tables(self):
   from alembic.config import Config
   from alembic import command
   from sqlalchemy import create_engine,inspect
@@ -35,9 +35,10 @@ class MigrationFrameworkTests(unittest.TestCase):
     else: os.environ["DATABASE_URL"]=old
    after=set(inspect(eng).get_table_names())
    self.assertEqual(after,before|{"alembic_version"})
+   self.assertIn("center_states",after)
    with eng.connect() as conn:
     from sqlalchemy import text
-    self.assertEqual(conn.execute(text("select version_num from alembic_version")).scalar(),"20260927_01")
+    self.assertEqual(conn.execute(text("select version_num from alembic_version")).scalar(),"20260928_02")
    eng.dispose()
 
 if __name__=="__main__": unittest.main()
