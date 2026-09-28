@@ -833,54 +833,141 @@ document.addEventListener('click',function(e){
 /* Sprint B/C server bridge — preserves v4.0b browser workflow while adding durable server persistence. */
 (function(){
   let syncTimer=null, syncing=false;
- function snapshot(){
-  const histories={};
-  for(let i=0;i<localStorage.length;i++){
-    const k=localStorage.key(i);
-    if(k&&k.startsWith('histDaily|')){
-      histories[k]=localStorage.getItem(k);
+  function snapshot(){
+    const histories={};
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(k&&k.startsWith('histDaily|')){
+        histories[k]=localStorage.getItem(k);
+      }
     }
+
+    return {
+      centers:localStorage.getItem(CENTER_STORAGE),
+      machines:localStorage.getItem(MACHINE_STORAGE),
+      histories,
+      version:'v5.0'
+    };
   }
-  return {
-    centers:localStorage.getItem(CENTER_STORAGE),
-    machines:localStorage.getItem(MACHINE_STORAGE),
-    histories,
-    version:'v5.0'
-  };
-}
 
   function snapshotForCenter(centerId){
-  const membership=(window.currentServerUser?.memberships||[])
-    .find(m=>String(m.center_id)===String(centerId));
+    const membership=(window.currentServerUser?.memberships||[])
+      .find(m=>String(m.center_id)===String(centerId));
 
-  if(!membership||!membership.center_name)return null;
+    if(!membership||!membership.center_name)return null;
 
-  const ck=centerKey(membership.center_name);
-  const center=centers[ck];
-  if(!center)return null;
+    const ck=centerKey(membership.center_name);
+    const center=centers[ck];
+    if(!center)return null;
 
-  const centerMachines={};
-  const histories={};
+    const centerMachines={};
+    const histories={};
 
-  Object.entries(machines).forEach(([mk,m])=>{
-    if(m?.centerKey!==ck)return;
+    Object.entries(machines).forEach(([mk,m])=>{
+      if(m?.centerKey!==ck)return;
 
-    centerMachines[mk]=m;
+      centerMachines[mk]=m;
 
-    const hk='histDaily|'+mk;
-    const hv=localStorage.getItem(hk);
-    if(hv!==null)histories[hk]=hv;
-  });
+      const hk='histDaily|'+mk;
+      const hv=localStorage.getItem(hk);
+      if(hv!==null)histories[hk]=hv;
+    });
 
-  return {
-    centers:{[ck]:center},
-    machines:centerMachines,
-    histories,
-    version:'v5.9-center'
-  };
-}
+    return {
+      centers:{[ck]:center},
+      machines:centerMachines,
+      histories,
+      version:'v5.9-center'
+    };
+  }
 
-   async function pushState(){
+  async function loadCenterState(centerId){
+    if(!window.serverAuthenticated||!centerId)return false;
+
+    try{
+      const r=await fetch(
+        '/api/centers/'+encodeURIComponent(centerId)+'/state'
+      );
+      if(!r.ok)return false;
+
+      const j=await r.json();
+      const p=j.payload;
+      if(!p)return false;
+
+      const membership=(window.currentServerUser?.memberships||[])
+        .find(m=>String(m.center_id)===String(centerId));
+
+      if(!membership?.center_name)return false;
+
+      const ck=centerKey(membership.center_name);
+
+      // Hydrate only this center.
+      const sc=typeof p.centers==='string'
+        ?JSON.parse(p.centers||'{}')
+        :(p.centers||{});
+
+      const sm=typeof p.machines==='string'
+        ?JSON.parse(p.machines||'{}')
+        :(p.machines||{});
+
+      if(sc[ck]){
+        centers[ck]=sc[ck];
+      }
+
+      // Remove only this center's cached machines before restoring
+      // the authoritative center-scoped copy.
+      Object.keys(machines).forEach(mk=>{
+        if(machines[mk]?.centerKey===ck){
+          delete machines[mk];
+        }
+      });
+
+      Object.entries(sm).forEach(([mk,m])=>{
+        if(m?.centerKey===ck){
+          machines[mk]=m;
+        }
+      });
+
+      // Remove only this center's cached histories.
+      const prefix='histDaily|'+ck+'|';
+      const removeKeys=[];
+
+      for(let i=0;i<localStorage.length;i++){
+        const k=localStorage.key(i);
+        if(k&&k.startsWith(prefix)){
+          removeKeys.push(k);
+        }
+      }
+
+      removeKeys.forEach(k=>localStorage.removeItem(k));
+
+      // Restore only histories belonging to this center.
+      Object.entries(p.histories||{}).forEach(([k,v])=>{
+        if(k.startsWith(prefix)){
+          localStorage.setItem(k,v);
+        }
+      });
+
+      localStorage.setItem(
+        CENTER_STORAGE,
+        JSON.stringify(centers)
+      );
+
+      localStorage.setItem(
+        MACHINE_STORAGE,
+        JSON.stringify(machines)
+      );
+
+      return true;
+    }catch(e){
+      console.warn('Center state hydration warning',e);
+      return false;
+    }
+  }
+
+  window.loadCenterState=loadCenterState;
+
+  async function pushState(){
     if(!window.serverAuthenticated)return;
 
     const u=window.currentServerUser;
@@ -1152,20 +1239,52 @@ window.loadAdminCenterIntelligence=async function(){
     document.querySelectorAll('input[name="allocationMode"],#thaiProvincePicker input,.allocation-percent-input,#capacityRows input,#capacityRows select,#capacityRows textarea,#calendarGrid input,#calendarGrid select,#calendarGrid textarea,#populationRows input,#populationRows select,#populationRows textarea,#forecastPage input,#forecastPage select,#forecastPage textarea,#forecastPage button').forEach(x=>x.disabled=viewer);
     const note=document.getElementById('backendStatus');if(note&&viewer)note.textContent='Connected • Viewer read-only for active center';
    };
-   window.switchActiveCenter=function(centerId){
-    const u=window.currentServerUser;if(!u||u.system_admin)return;
-    const m=(u.memberships||[]).find(x=>String(x.center_id)===String(centerId));if(!m)return;
-    window.activeCenterMembership=m;localStorage.setItem('linac_active_center_id_user_'+u.id,String(m.center_id));
-    const sel=document.getElementById('activeCenterSelect');if(sel)sel.value=String(m.center_id);
-    const cs=document.getElementById('centerSelect');if(cs)cs.value=m.center_name||'';
-    const ms=document.getElementById('machineSelect');if(ms)ms.value='';
-    if(typeof loadCenter==='function')loadCenter(m.center_name,true);
+   window.switchActiveCenter=async function(centerId){
+    const u=window.currentServerUser;
+    if(!u||u.system_admin)return;
+
+    const m=(u.memberships||[])
+      .find(x=>String(x.center_id)===String(centerId));
+    if(!m)return;
+
+    // Establish the active center first so any later persistence
+    // is scoped to the correct center.
+    window.activeCenterMembership=m;
+    localStorage.setItem(
+      'linac_active_center_id_user_'+u.id,
+      String(m.center_id)
+    );
+
+    const sel=document.getElementById('activeCenterSelect');
+    if(sel)sel.value=String(m.center_id);
+
+    // Load the authoritative server copy for this center before
+    // rendering its workspace.
+    if(window.loadCenterState){
+      await window.loadCenterState(m.center_id);
+    }
+
+    const cs=document.getElementById('centerSelect');
+    if(cs)cs.value=m.center_name||'';
+
+    const ms=document.getElementById('machineSelect');
+    if(ms)ms.value='';
+
+    if(typeof loadCenter==='function'){
+      loadCenter(m.center_name,true);
+    }
+
     if(typeof refreshLists==='function')refreshLists();
     if(typeof renderDataManager==='function')renderDataManager();
     if(typeof renderCalendar==='function')renderCalendar();
     if(typeof updateTrackerQa==='function')updateTrackerQa();
-    window.applyActiveCenterRole();window.updateIdentityHeader();
-    if(window.loadCenterMembers)window.loadCenterMembers();
+
+    window.applyActiveCenterRole();
+    window.updateIdentityHeader();
+
+    if(window.loadCenterMembers){
+      window.loadCenterMembers();
+    }
    };
    window.setupActiveCenterSwitcher();
    window.updateIdentityHeader();
