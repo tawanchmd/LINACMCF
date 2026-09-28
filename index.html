@@ -833,14 +833,53 @@ document.addEventListener('click',function(e){
 /* Sprint B/C server bridge — preserves v4.0b browser workflow while adding durable server persistence. */
 (function(){
   let syncTimer=null, syncing=false;
-  function snapshot(){
-    const histories={};
-    for(let i=0;i<localStorage.length;i++){
-      const k=localStorage.key(i);
-      if(k&&k.startsWith('histDaily|')) histories[k]=localStorage.getItem(k);
+ function snapshot(){
+  const histories={};
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);
+    if(k&&k.startsWith('histDaily|')){
+      histories[k]=localStorage.getItem(k);
     }
-    return {centers:localStorage.getItem(CENTER_STORAGE),machines:localStorage.getItem(MACHINE_STORAGE),histories,version:'v5.0'};
   }
+  return {
+    centers:localStorage.getItem(CENTER_STORAGE),
+    machines:localStorage.getItem(MACHINE_STORAGE),
+    histories,
+    version:'v5.0'
+  };
+}
+
+  function snapshotForCenter(centerId){
+  const membership=(window.currentServerUser?.memberships||[])
+    .find(m=>String(m.center_id)===String(centerId));
+
+  if(!membership||!membership.center_name)return null;
+
+  const ck=centerKey(membership.center_name);
+  const center=centers[ck];
+  if(!center)return null;
+
+  const centerMachines={};
+  const histories={};
+
+  Object.entries(machines).forEach(([mk,m])=>{
+    if(m?.centerKey!==ck)return;
+
+    centerMachines[mk]=m;
+
+    const hk='histDaily|'+mk;
+    const hv=localStorage.getItem(hk);
+    if(hv!==null)histories[hk]=hv;
+  });
+
+  return {
+    centers:{[ck]:center},
+    machines:centerMachines,
+    histories,
+    version:'v5.9-center'
+  };
+}
+
   async function pushState(){
     if(!window.serverAuthenticated)return;
     const u=window.currentServerUser,roles=(u?.memberships||[]).map(m=>m.role)||[];
