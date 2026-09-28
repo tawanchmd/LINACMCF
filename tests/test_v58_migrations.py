@@ -36,7 +36,7 @@ class MigrationFrameworkTests(unittest.TestCase):
     if old is None: os.environ.pop("DATABASE_URL",None)
     else: os.environ["DATABASE_URL"]=old
    after=set(inspect(eng).get_table_names())
-   self.assertEqual(after,before|{"alembic_version"})
+   self.assertEqual(after,before|{"alembic_version","center_states"})
    self.assertIn("center_states",after)
    with eng.connect() as conn:
     from sqlalchemy import text
