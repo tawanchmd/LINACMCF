@@ -10,7 +10,7 @@ from sqlalchemy import select, text, inspect
 from starlette.middleware.sessions import SessionMiddleware
 from pwdlib import PasswordHash
 from .db import Base, engine, SessionLocal
-from .models import Center, Machine, DailyHistory, AppState, User, CenterMembership, AuditLog, UserProfile, AccessRequest
+from .models import Center, Machine, DailyHistory, AppState, CenterState, User, CenterMembership, AuditLog, UserProfile, AccessRequest
 
 @asynccontextmanager
 async def lifespan(app:FastAPI):
@@ -554,6 +554,24 @@ def admin_center_intelligence(u:User=Depends(current_user),s:Session=Depends(db)
             "modeled_capacity":agg.get("modeled_capacity",0),"current_utilization_pct":agg.get("current_utilization_pct"),
             "capacity_interpretation":agg.get("capacity_interpretation","Insufficient data")})
     return {"rows":users}
+
+@app.get("/api/centers/{center_id}/state")
+def get_center_state(center_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not can_center(s,u,center_id,"read"): raise HTTPException(403,"Center access denied")
+    r=s.scalar(select(CenterState).where(CenterState.center_id==center_id))
+    return {"center_id":center_id,"payload":_state_obj(r) if r else None,
+            "updated_at":r.updated_at if r else None}
+
+@app.put("/api/centers/{center_id}/state")
+def put_center_state(center_id:int,x:StateIn,u:User=Depends(current_user),s:Session=Depends(db)):
+    if not can_center(s,u,center_id,"history_write"): raise HTTPException(403,"Center write access denied")
+    raw=json.dumps(x.payload,separators=(",",":"),ensure_ascii=False)
+    if len(raw)>5_000_000: raise HTTPException(413,"State payload too large")
+    r=s.scalar(select(CenterState).where(CenterState.center_id==center_id))
+    if r: r.payload=raw
+    else: s.add(CenterState(center_id=center_id,payload=raw))
+    audit(s,u,"center_state.save",center_id,f"bytes={len(raw)}"); s.commit()
+    return {"saved":True,"center_id":center_id,"bytes":len(raw)}
 
 @app.get("/api/state")
 def get_state(u:User=Depends(current_user),s:Session=Depends(db)):
