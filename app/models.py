@@ -17,6 +17,13 @@ class DailyHistory(Base):
 class AppState(Base):
  __tablename__="app_state"; id:Mapped[int]=mapped_column(primary_key=True); state_key:Mapped[str]=mapped_column(String(160),unique=True,index=True); payload:Mapped[str]=mapped_column(Text); updated_at:Mapped[datetime]=mapped_column(DateTime,server_default=func.now(),onupdate=func.now())
 
+class CenterState(Base):
+ __tablename__="center_states"
+ id:Mapped[int]=mapped_column(primary_key=True)
+ center_id:Mapped[int]=mapped_column(ForeignKey("centers.id",ondelete="CASCADE"),unique=True,index=True)
+ payload:Mapped[str]=mapped_column(Text)
+ updated_at:Mapped[datetime]=mapped_column(DateTime,server_default=func.now(),onupdate=func.now())
+
 class User(Base):
  __tablename__="users"
  id:Mapped[int]=mapped_column(primary_key=True)
