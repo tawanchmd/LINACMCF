@@ -17,7 +17,7 @@ async def lifespan(app:FastAPI):
     migrate_schema()
     yield
 
-app = FastAPI(title="LINAC Machine Carrying Capacity API", version="5.8", lifespan=lifespan)
+app = FastAPI(title="LINAC Machine Carrying Capacity API", version="5.9", lifespan=lifespan)
 _app_env=os.environ.get("APP_ENV","").strip().lower()
 _session_secret=os.environ.get("SESSION_SECRET","").strip()
 if _app_env=="production" and not _session_secret:
@@ -97,7 +97,7 @@ def audit(s,u,action,center_id=None,detail=None):
 
 @app.get("/health")
 def health(s:Session=Depends(db)):
-    s.execute(text("SELECT 1")); return {"status":"ok","database":"connected","ui":"v5.8","auth":"rbac","isolation":"per-user/per-center"}
+    s.execute(text("SELECT 1")); return {"status":"ok","database":"connected","ui":"v5.8","api":"v5.9","auth":"rbac","isolation":"center-scoped-state-foundation"}
 
 @app.get("/api/auth/setup-status")
 def setup_status(s:Session=Depends(db)):
