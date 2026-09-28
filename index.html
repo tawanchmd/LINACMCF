@@ -880,17 +880,71 @@ document.addEventListener('click',function(e){
   };
 }
 
-  async function pushState(){
+   async function pushState(){
     if(!window.serverAuthenticated)return;
-    const u=window.currentServerUser,roles=(u?.memberships||[]).map(m=>m.role)||[];
-    if(u&&!u.system_admin&&roles.length>0&&roles.every(r=>r==='viewer'))return;
-    if(syncing)return; syncing=true;
+
+    const u=window.currentServerUser;
+    const active=window.activeCenterMembership;
+
+    // System admin has no single active center workspace.
+    // Keep legacy behavior for now until national/admin persistence
+    // is migrated separately.
+    if(u?.system_admin){
+      if(syncing)return;
+      syncing=true;
+      try{
+        const r=await fetch('/api/state',{
+          method:'PUT',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({payload:snapshot()})
+        });
+        if(r.ok&&$('backendStatus')){
+          $('backendStatus').textContent='Connected • server persistence';
+        }
+      }catch(e){
+        if($('backendStatus')){
+          $('backendStatus').textContent='Browser mode • server unavailable';
+        }
+      }finally{
+        syncing=false;
+      }
+      return;
+    }
+
+    // A normal user must have an active center membership.
+    if(!active?.center_id)return;
+
+    // Viewer is read-only for the active center.
+    if(active.role==='viewer')return;
+
+    const payload=snapshotForCenter(active.center_id);
+    if(!payload)return;
+
+    if(syncing)return;
+    syncing=true;
+
     try{
-      const r=await fetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({payload:snapshot()})});
-      if(r.ok&&$('backendStatus')) $('backendStatus').textContent='Connected • server persistence';
-    }catch(e){ if($('backendStatus')) $('backendStatus').textContent='Browser mode • server unavailable'; }
-    finally{syncing=false}
+      const r=await fetch(
+        '/api/centers/'+encodeURIComponent(active.center_id)+'/state',
+        {
+          method:'PUT',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({payload})
+        }
+      );
+
+      if(r.ok&&$('backendStatus')){
+        $('backendStatus').textContent='Connected • center persistence';
+      }
+    }catch(e){
+      if($('backendStatus')){
+        $('backendStatus').textContent='Browser mode • server unavailable';
+      }
+    }finally{
+      syncing=false;
+    }
   }
+
   function queueSync(){clearTimeout(syncTimer);syncTimer=setTimeout(pushState,350)}
   const oldPersist=persistStores; persistStores=function(){oldPersist();queueSync()};
   const oldWrite=writeHistory; writeHistory=function(d){oldWrite(d);queueSync()};
