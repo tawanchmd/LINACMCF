@@ -26,6 +26,8 @@ class MigrationFrameworkTests(unittest.TestCase):
    url="sqlite:///"+os.path.join(td,"migration.sqlite").replace("\\","/")
    eng=create_engine(url)
    Base.metadata.create_all(eng)
+   # Emulate a production v5.8 database before the v5.9 additive table exists.
+   models.CenterState.__table__.drop(eng)
    before=set(inspect(eng).get_table_names())
    old=os.environ.get("DATABASE_URL");os.environ["DATABASE_URL"]=url
    try:
