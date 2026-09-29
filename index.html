@@ -1037,26 +1037,71 @@ document.addEventListener('click',function(e){
   const oldWrite=writeHistory; writeHistory=function(d){oldWrite(d);queueSync()};
   async function bootstrap(){
     if(!window.serverAuthenticated)return;
+
+    const u=window.currentServerUser;
+
+    // v5.9 center users hydrate through switchActiveCenter().
+    // Keep legacy /api/state bootstrap for system admin only.
+    if(!u?.system_admin)return;
+
     try{
       const r=await fetch('/api/state'); if(!r.ok)return;
-      const j=await r.json(), p=j.payload;
-      const localHas=!!localStorage.getItem(CENTER_STORAGE)||!!localStorage.getItem(MACHINE_STORAGE);
-      const serverHas=!!(p&&(p.centers||p.machines||Object.keys(p.histories||{}).length));
-      // Authenticated server state is authoritative. Always merge the user's saved
-      // centers/machines into memory, independent of whichever machine is selected
-      // in the Machine workspace. This makes national roll-up use every saved machine.
+
+      const j=await r.json();
+      const p=j.payload;
+
+      const localHas=
+        !!localStorage.getItem(CENTER_STORAGE)||
+        !!localStorage.getItem(MACHINE_STORAGE);
+
+      const serverHas=!!(
+        p&&(
+          p.centers||
+          p.machines||
+          Object.keys(p.histories||{}).length
+        )
+      );
+
       if(serverHas){
         try{
-          const sc=typeof p.centers==='string'?JSON.parse(p.centers||'{}'):(p.centers||{});
-          const sm=typeof p.machines==='string'?JSON.parse(p.machines||'{}'):(p.machines||{});
-          Object.assign(centers,sc);Object.assign(machines,sm);
-          localStorage.setItem(CENTER_STORAGE,JSON.stringify(centers));
-          localStorage.setItem(MACHINE_STORAGE,JSON.stringify(machines));
-          Object.entries(p.histories||{}).forEach(([k,v])=>localStorage.setItem(k,v));
-          refreshLists();renderDataManager();
-        }catch(e){console.warn('Saved machine hydration warning',e)}
-      }else if(localHas) queueSync();
-      if($('backendStatus')) $('backendStatus').textContent='Connected • server persistence';
+          const sc=typeof p.centers==='string'
+            ?JSON.parse(p.centers||'{}')
+            :(p.centers||{});
+
+          const sm=typeof p.machines==='string'
+            ?JSON.parse(p.machines||'{}')
+            :(p.machines||{});
+
+          Object.assign(centers,sc);
+          Object.assign(machines,sm);
+
+          localStorage.setItem(
+            CENTER_STORAGE,
+            JSON.stringify(centers)
+          );
+
+          localStorage.setItem(
+            MACHINE_STORAGE,
+            JSON.stringify(machines)
+          );
+
+          Object.entries(p.histories||{}).forEach(
+            ([k,v])=>localStorage.setItem(k,v)
+          );
+
+          refreshLists();
+          renderDataManager();
+        }catch(e){
+          console.warn('Saved machine hydration warning',e);
+        }
+      }else if(localHas){
+        queueSync();
+      }
+
+      if($('backendStatus')){
+        $('backendStatus').textContent=
+          'Connected • server persistence';
+      }
     }catch(e){}
   }
   const browserForecast=runForecastAnalysis;
