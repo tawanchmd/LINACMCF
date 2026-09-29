@@ -8,7 +8,7 @@ from app.models import Base, Center, User, UserProfile, CenterMembership, Machin
 from app.main import (
     CenterMemberAddIn, MembershipIn, MachineIn, HistoryRowIn,
     center_members, center_add_member, center_member_role, center_remove_member,
-    create_machine, history, save_history, can_center, put_state, StateIn
+    create_machine, update_machine, delete_machine, history, save_history, can_center, put_state, StateIn
 )
 from datetime import date
 
@@ -57,10 +57,28 @@ class MembershipRBACRegression(unittest.TestCase):
         self.assertEqual(save_history(self.machine.id,row,self.entry,self.s)["saved"],1)
         self.assertEqual(len(history(self.machine.id,self.viewer,self.s)),1)
 
-    def test_machine_creation_admin_only(self):
-        x=MachineIn(center_id=self.c1.id,name="LINAC B")
-        self.denied(create_machine,x,self.entry,self.s)
-        self.assertEqual(create_machine(x,self.admin,self.s).name,"LINAC B")
+    def test_machine_update_delete_admin_only(self):
+        x=MachineIn(
+            center_id=self.c1.id,
+            name="LINAC A Updated",
+            operating_minutes=600,
+            avg_course_fractions=20
+        )
+
+        # Data Entry must not change machine configuration.
+        self.denied(update_machine,self.machine.id,x,self.entry,self.s)
+
+        updated=update_machine(self.machine.id,x,self.admin,self.s)
+        self.assertEqual(updated.name,"LINAC A Updated")
+        self.assertEqual(updated.operating_minutes,600)
+        self.assertEqual(updated.avg_course_fractions,20)
+
+        # Data Entry must not delete a machine.
+        self.denied(delete_machine,self.machine.id,self.entry,self.s)
+
+        out=delete_machine(self.machine.id,self.admin,self.s)
+        self.assertTrue(out["ok"])
+        self.assertIsNone(self.s.get(Machine,self.machine.id))
 
     def test_last_admin_protection(self):
         x=MembershipIn(user_id=self.admin.id,center_id=self.c1.id,role="viewer")

@@ -439,6 +439,34 @@ def create_machine(x:MachineIn,u:User=Depends(current_user),s:Session=Depends(db
     if not s.get(Center,x.center_id): raise HTTPException(404,"Center not found")
     if not can_center(s,u,x.center_id,"admin_write"): raise HTTPException(403,"Center Admin access required")
     m=Machine(**x.model_dump()); s.add(m); audit(s,u,"machine.create",x.center_id,x.name); s.commit(); s.refresh(m); return m
+@app.put("/api/machines/{machine_id}")
+def update_machine(machine_id:int,x:MachineIn,u:User=Depends(current_user),s:Session=Depends(db)):
+    m=machine_for_user(s,u,machine_id,"admin_write")
+
+    if x.center_id!=m.center_id:
+        raise HTTPException(422,"Machine center cannot be changed")
+
+    for k,v in x.model_dump(exclude={"center_id"}).items():
+        setattr(m,k,v)
+
+    audit(s,u,"machine.update",m.center_id,f"machine={machine_id}; name={m.name}")
+    s.commit()
+    s.refresh(m)
+    return m
+
+
+@app.delete("/api/machines/{machine_id}")
+def delete_machine(machine_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
+    m=machine_for_user(s,u,machine_id,"admin_write")
+
+    center_id=m.center_id
+    name=m.name
+
+    s.delete(m)
+    audit(s,u,"machine.delete",center_id,f"machine={machine_id}; name={name}")
+    s.commit()
+
+    return {"ok":True,"machine_id":machine_id,"center_id":center_id}
 
 def machine_for_user(s,u,machine_id,action="read"):
     m=s.get(Machine,machine_id)
