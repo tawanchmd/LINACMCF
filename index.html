@@ -158,7 +158,24 @@ function requireUnlocked(action='edit this center'){const ck=centerKey($('center
 function normName(x){return String(x||'').trim().toLowerCase().replace(/\s+/g,' ')}
 function centerKey(name){return normName(name)}
 function machineKey(centerName,machineName){return centerKey(centerName)+'|'+normName(machineName)}
-function persistStores(){localStorage.setItem(CENTER_STORAGE,JSON.stringify(centers));localStorage.setItem(MACHINE_STORAGE,JSON.stringify(machines));setTimeout(updateNationalDashboard,0)}
+function persistStores(){
+  localStorage.setItem(
+    CENTER_STORAGE,
+    JSON.stringify(centers)
+  );
+
+  localStorage.setItem(
+    MACHINE_STORAGE,
+    JSON.stringify(machines)
+  );
+
+  setTimeout(updateNationalDashboard,0);
+
+  if(window.serverAuthenticated &&
+     typeof pushState==='function'){
+    setTimeout(pushState,0);
+  }
+}
 function migrateLegacy(){if(Object.keys(centers).length||Object.keys(machines).length)return;let old={};try{old=JSON.parse(localStorage.getItem(LEGACY_STORAGE)||'{}')}catch(e){}Object.values(old).forEach(r=>{if(!r?.center)return;let ck=centerKey(r.center);centers[ck]={center:r.center,population:r.population||{}};if(r.machine){let mk=machineKey(r.center,r.machine);machines[mk]={centerKey:ck,center:r.center,machine:r.machine,machineInputs:r.machineInputs||{},calendar:r.calendar||{},computed:r.computed||{}};let oldHist='histDaily|'+r.center+'|'+r.machine,newHist='histDaily|'+mk;if(localStorage.getItem(oldHist)&&!localStorage.getItem(newHist))localStorage.setItem(newHist,localStorage.getItem(oldHist))}});persistStores()}
 migrateLegacy();
 const PATIENT_TRACKER_TEST={"2024-04-22":{"newPatients":3.0,"activePatients":0.0},"2024-04-23":{"newPatients":1.0,"activePatients":4.0},"2024-04-24":{"newPatients":1.0,"activePatients":5.0},"2024-04-25":{"newPatients":3.0,"activePatients":7.0},"2024-04-26":{"newPatients":4.0,"activePatients":11.0},"2024-04-29":{"newPatients":7.0,"activePatients":12.0},"2024-04-30":{"newPatients":9.0,"activePatients":21.0},"2024-05-01":{"newPatients":5.0,"activePatients":24.0},"2024-05-02":{"newPatients":2.0,"activePatients":27.0},"2024-05-03":{"newPatients":2.0,"activePatients":26.0},"2024-05-07":{"newPatients":9.0,"activePatients":33.0},"2024-05-08":{"newPatients":5.0,"activePatients":29.0},"2024-05-09":{"newPatients":2.0,"activePatients":30.0},"2024-05-13":{"newPatients":5.0,"activePatients":32.0},"2024-05-14":{"newPatients":5.0,"activePatients":37.0},"2024-05-15":{"newPatients":6.0,"activePatients":40.0},"2024-05-16":{"newPatients":6.0,"activePatients":47.0},"2024-05-17":{"newPatients":1.0,"activePatients":46.0},"2024-05-20":{"newPatients":8.0,"activePatients":55.0},"2024-05-21":{"newPatients":10.0,"activePatients":62.0},"2024-05-23":{"newPatients":7.0,"activePatients":67.0},"2024-05-24":{"newPatients":4.0,"activePatients":67.0},"2024-05-27":{"newPatients":4.0,"activePatients":70.0},"2024-05-28":{"newPatients":3.0,"activePatients":67.0},"2024-05-29":{"newPatients":3.0,"activePatients":71.0},"2024-05-30":{"newPatients":4.0,"activePatients":73.0},"2024-05-31":{"newPatients":6.0,"activePatients":74.0},"2024-06-04":{"newPatients":3.0,"activePatients":72.0},"2024-06-05":{"newPatients":5.0,"activePatients":76.0},"2024-06-06":{"newPatients":7.0,"activePatients":81.0},"2024-06-07":{"newPatients":6.0,"activePatients":72.0},"2024-06-10":{"newPatients":4.0,"activePatients":80.0},"2024-06-11":{"newPatients":5.0,"activePatients":77.0},"2024-06-12":{"newPatients":5.0,"activePatients":83.0},"2024-06-13":{"newPatients":5.0,"activePatients":81.0},"2024-06-14":{"newPatients":4.0,"activePatients":81.0},"2024-06-17":{"newPatients":4.0,"activePatients":71.0},"2024-06-18":{"newPatients":4.0,"activePatients":84.0},"2024-06-19":{"newPatients":2.0,"activePatients":73.0},"2024-06-20":{"newPatients":2.0,"activePatients":71.0},"2024-06-21":{"newPatients":2.0,"activePatients":68.0},"2024-06-24":{"newPatients":6.0,"activePatients":66.0},"2024-06-25":{"newPatients":5.0,"activePatients":64.0},"2024-06-26":{"newPatients":6.0,"activePatients":68.0},"2024-06-27":{"newPatients":4.0,"activePatients":70.0},"2024-06-28":{"newPatients":4.0,"activePatients":71.0},"2024-07-01":{"newPatients":4.0,"activePatients":66.0},"2024-07-02":{"newPatients":3.0,"activePatients":64.0},"2024-07-03":{"newPatients":4.0,"activePatients":60.0},"2024-07-04":{"newPatients":4.0,"activePatients":62.0},"2024-07-05":{"newPatients":7.0,"activePatients":62.0},"2024-07-08":{"newPatients":5.0,"activePatients":64.0},"2024-07-09":{"newPatients":5.0,"activePatients":61.0},"2024-07-10":{"newPatients":7.0,"activePatients":63.0},"2024-07-11":{"newPatients":6.0,"activePatients":67.0},"2024-07-12":{"newPatients":7.0,"activePatients":73.0},"2024-07-15":{"newPatients":5.0,"activePatients":72.0},"2024-07-16":{"newPatients":3.0,"activePatients":72.0},"2024-07-17":{"newPatients":6.0,"activePatients":72.0},"2024-07-18":{"newPatients":6.0,"activePatients":70.0},"2024-07-19":{"newPatients":6.0,"activePatients":67.0},"2024-07-23":{"newPatients":7.0,"activePatients":70.0},"2024-07-24":{"newPatients":8.0,"activePatients":72.0},"2024-07-25":{"newPatients":5.0,"activePatients":73.0},"2024-07-26":{"newPatients":8.0,"activePatients":73.0},"2024-07-30":{"newPatients":5.0,"activePatients":77.0},"2024-07-31":{"newPatients":4.0,"activePatients":70.0},"2024-08-01":{"newPatients":5.0,"activePatients":72.0},"2024-08-02":{"newPatients":6.0,"activePatients":70.0},"2024-08-05":{"newPatients":4.0,"activePatients":79.0},"2024-08-06":{"newPatients":4.0,"activePatients":76.0},"2024-08-07":{"newPatients":3.0,"activePatients":75.0},"2024-08-08":{"newPatients":3.0,"activePatients":76.0},"2024-08-09":{"newPatients":2.0,"activePatients":76.0},"2024-08-12":{"newPatients":2.0,"activePatients":70.0},"2024-08-13":{"newPatients":4.0,"activePatients":72.0},"2024-08-14":{"newPatients":4.0,"activePatients":67.0},"2024-08-15":{"newPatients":7.0,"activePatients":69.0},"2024-08-16":{"newPatients":7.0,"activePatients":72.0},"2024-08-19":{"newPatients":7.0,"activePatients":72.0},"2024-08-20":{"newPatients":4.0,"activePatients":69.0},"2024-08-21":{"newPatients":3.0,"activePatients":69.0},"2024-08-22":{"newPatients":3.0,"activePatients":64.0},"2024-08-23":{"newPatients":3.0,"activePatients":62.0},"2024-08-26":{"newPatients":5.0,"activePatients":59.0},"2024-08-27":{"newPatients":3.0,"activePatients":59.0},"2024-08-28":{"newPatients":4.0,"activePatients":57.0},"2024-08-29":{"newPatients":6.0,"activePatients":58.0},"2024-08-30":{"newPatients":5.0,"activePatients":58.0},"2024-09-02":{"newPatients":6.0,"activePatients":57.0},"2024-09-03":{"newPatients":5.0,"activePatients":60.0},"2024-09-04":{"newPatients":6.0,"activePatients":61.0},"2024-09-05":{"newPatients":5.0,"activePatients":58.0},"2024-09-06":{"newPatients":3.0,"activePatients":59.0},"2024-09-09":{"newPatients":4.0,"activePatients":57.0},"2024-09-10":{"newPatients":3.0,"activePatients":57.0},"2024-09-11":{"newPatients":4.0,"activePatients":59.0},"2024-09-12":{"newPatients":4.0,"activePatients":61.0},"2024-09-13":{"newPatients":5.0,"activePatients":63.0},"2024-09-16":{"newPatients":3.0,"activePatients":66.0},"2024-09-17":{"newPatients":3.0,"activePatients":67.0},"2024-09-18":{"newPatients":3.0,"activePatients":67.0},"2024-09-19":{"newPatients":4.0,"activePatients":66.0},"2024-09-20":{"newPatients":4.0,"activePatients":67.0},"2024-09-23":{"newPatients":3.0,"activePatients":66.0},"2024-09-24":{"newPatients":2.0,"activePatients":63.0},"2024-09-25":{"newPatients":1.0,"activePatients":65.0},"2024-09-26":{"newPatients":6.0,"activePatients":65.0},"2024-09-27":{"newPatients":7.0,"activePatients":67.0},"2024-09-30":{"newPatients":5.0,"activePatients":64.0},"2024-10-01":{"newPatients":4.0,"activePatients":65.0},"2024-10-02":{"newPatients":0.0,"activePatients":65.0},"2024-10-03":{"newPatients":4.0,"activePatients":65.0},"2024-10-04":{"newPatients":6.0,"activePatients":61.0},"2024-10-07":{"newPatients":7.0,"activePatients":64.0},"2024-10-08":{"newPatients":5.0,"activePatients":61.0},"2024-10-09":{"newPatients":3.0,"activePatients":61.0},"2024-10-10":{"newPatients":4.0,"activePatients":60.0},"2024-10-11":{"newPatients":3.0,"activePatients":62.0},"2024-10-15":{"newPatients":4.0,"activePatients":59.0},"2024-10-16":{"newPatients":6.0,"activePatients":63.0},"2024-10-17":{"newPatients":6.0,"activePatients":65.0},"2024-10-18":{"newPatients":2.0,"activePatients":65.0},"2024-10-21":{"newPatients":2.0,"activePatients":63.0},"2024-10-22":{"newPatients":6.0,"activePatients":65.0},"2024-10-24":{"newPatients":7.0,"activePatients":65.0},"2024-10-25":{"newPatients":4.0,"activePatients":66.0},"2024-10-28":{"newPatients":4.0,"activePatients":67.0},"2024-10-29":{"newPatients":1.0,"activePatients":66.0},"2024-10-30":{"newPatients":5.0,"activePatients":67.0},"2024-10-31":{"newPatients":4.0,"activePatients":63.0},"2024-11-01":{"newPatients":5.0,"activePatients":63.0},"2024-11-04":{"newPatients":7.0,"activePatients":64.0},"2024-11-05":{"newPatients":4.0,"activePatients":66.0},"2024-11-06":{"newPatients":3.0,"activePatients":65.0},"2024-11-07":{"newPatients":5.0,"activePatients":64.0},"2024-11-08":{"newPatients":4.0,"activePatients":63.0},"2024-11-11":{"newPatients":4.0,"activePatients":64.0},"2024-11-12":{"newPatients":5.0,"activePatients":62.0},"2024-11-13":{"newPatients":6.0,"activePatients":64.0},"2024-11-14":{"newPatients":2.0,"activePatients":62.0},"2024-11-15":{"newPatients":4.0,"activePatients":62.0},"2024-11-18":{"newPatients":4.0,"activePatients":62.0},"2024-11-19":{"newPatients":3.0,"activePatients":61.0},"2024-11-20":{"newPatients":4.0,"activePatients":61.0},"2024-11-21":{"newPatients":4.0,"activePatients":60.0},"2024-11-22":{"newPatients":3.0,"activePatients":58.0},"2024-11-25":{"newPatients":6.0,"activePatients":61.0},"2024-11-26":{"newPatients":4.0,"activePatients":63.0},"2024-11-27":{"newPatients":4.0,"activePatients":63.0},"2024-11-28":{"newPatients":4.0,"activePatients":64.0},"2024-11-29":{"newPatients":5.0,"activePatients":62.0},"2024-12-02":{"newPatients":11.0,"activePatients":69.0},"2024-12-03":{"newPatients":2.0,"activePatients":64.0},"2024-12-04":{"newPatients":5.0,"activePatients":65.0},"2024-12-06":{"newPatients":5.0,"activePatients":66.0},"2024-12-09":{"newPatients":8.0,"activePatients":73.0},"2024-12-10":{"newPatients":0.0,"activePatients":35.0},"2024-12-11":{"newPatients":4.0,"activePatients":67.0},"2024-12-12":{"newPatients":5.0,"activePatients":66.0},"2024-12-13":{"newPatients":3.0,"activePatients":62.0},"2024-12-16":{"newPatients":4.0,"activePatients":62.0},"2024-12-17":{"newPatients":4.0,"activePatients":65.0},"2024-12-18":{"newPatients":4.0,"activePatients":64.0},"2024-12-19":{"newPatients":5.0,"activePatients":66.0},"2024-12-20":{"newPatients":6.0,"activePatients":67.0},"2024-12-23":{"newPatients":8.0,"activePatients":67.0},"2024-12-24":{"newPatients":4.0,"activePatients":70.0},"2024-12-25":{"newPatients":8.0,"activePatients":75.0},"2024-12-26":{"newPatients":6.0,"activePatients":76.0},"2024-12-27":{"newPatients":3.0,"activePatients":74.0}};
@@ -294,7 +311,119 @@ if(window.serverAuthenticated){
   persistStores();refreshLists();renderDataManager();calc();updateAccessUi();return;
 }
 if(existing&&hasCenterPin(ck)&&!unlockedCenters.has(ck)){alert('Center นี้ถูกล็อก กรุณา Unlock ก่อนแก้ไข');return}if(!hasCenterPin(ck)){if(!validPin(pin)){alert('Center ใหม่/Center เดิมที่ยังไม่มี PIN ต้องตั้ง PIN เป็นตัวเลข 6 หลักก่อนบันทึก');return}{const salt=randomSalt(),iterations=150000;access={pinHash:localPinHash(pin,salt),salt,iterations:1,scheme:'local-prototype-v1',createdAt:new Date().toISOString()};}unlockedCenters.add(ck)}centers[ck]={center:name,population:{population:n('population'),incidence:n('incidence'),rtRate:n('rtRate')},serviceArea:existing?.serviceArea||{},access,updatedAt:new Date().toISOString()};$('centerPin').value='';persistStores();refreshLists();renderDataManager();calc();updateAccessUi();alert('บันทึก Center parameters และ access protection แล้ว')}
-function saveMachine(){if(!requireUnlocked('เพื่อบันทึก Machine'))return;const center=$('centerSelect').value.trim(),machine=$('machineSelect').value.trim();if(!center){alert('กรุณาเลือกหรือบันทึก Center ก่อน');return}if(!machine){alert('กรุณาระบุชื่อ Machine');return}const ck=centerKey(center);if(!centers[ck])centers[ck]={center,population:{population:n('population'),incidence:n('incidence'),rtRate:n('rtRate')},updatedAt:new Date().toISOString()};const m=calc(),mk=machineKey(center,machine);machines[mk]={centerKey:ck,center,machine,machineInputs:currentMachineInput(),calendar:{startDate:$('startDate').value,endDate:$('endDate').value,holidayList:$('holidayList').value,workSat:!!$('workSat')?.checked,workSun:!!$('workSun')?.checked},computed:m,updatedAt:new Date().toISOString()};persistStores();refreshLists();renderDataManager();calc();alert('บันทึก Machine และเชื่อมกับ Center แล้ว')}
+async function saveMachine(){
+  if(!requireUnlocked('เพื่อบันทึก Machine'))return;
+
+  const center=$('centerSelect').value.trim();
+  const machine=$('machineSelect').value.trim();
+
+  if(!center){
+    alert('กรุณาเลือกหรือบันทึก Center ก่อน');
+    return;
+  }
+
+  if(!machine){
+    alert('กรุณาระบุชื่อ Machine');
+    return;
+  }
+
+  const membership=window.activeCenterMembership;
+
+  if(window.serverAuthenticated &&
+     (!membership||membership.role!=='center_admin')){
+    alert('Only Center Admin can change machine configuration.');
+    return;
+  }
+
+  const ck=centerKey(center);
+  const mk=machineKey(center,machine);
+  const existing=machines[mk]||{};
+  const inputs=currentMachineInput();
+  const m=calc();
+
+  // v5.9 server-backed machine must already have a DB identity.
+  if(window.serverAuthenticated){
+    if(!existing.serverMachineId){
+      alert('This machine is not linked to the server database yet.');
+      return;
+    }
+
+    try{
+      const r=await fetch(
+        '/api/machines/'+encodeURIComponent(existing.serverMachineId),
+        {
+          method:'PUT',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({
+            center_id:membership.center_id,
+            name:machine,
+            operating_minutes:inputs.op,
+            idle_minutes:inputs.idle,
+            imrt_proportion:inputs.imrt,
+            imrt_cycle_minutes:inputs.imrtTime,
+            d3_cycle_minutes:inputs.crtTime,
+            staff_efficacy:inputs.eff,
+            avg_course_fractions:inputs.avgFrac,
+            working_days:inputs.workingDays,
+            linac_capacity_allowance:inputs.allow
+          })
+        }
+      );
+
+      if(!r.ok){
+        let msg='Unable to save machine configuration.';
+        try{
+          const e=await r.json();
+          msg=e.detail||msg;
+        }catch(_){}
+        throw new Error(msg);
+      }
+
+      await r.json();
+
+    }catch(e){
+      console.error('Save machine failed',e);
+      alert(e.message||'Unable to save machine configuration.');
+      return;
+    }
+  }
+
+  if(!centers[ck]){
+    centers[ck]={
+      center,
+      population:{
+        population:n('population'),
+        incidence:n('incidence'),
+        rtRate:n('rtRate')
+      },
+      updatedAt:new Date().toISOString()
+    };
+  }
+
+  machines[mk]={
+    ...existing,
+    centerKey:ck,
+    center,
+    machine,
+    machineInputs:inputs,
+    calendar:{
+      startDate:$('startDate').value,
+      endDate:$('endDate').value,
+      holidayList:$('holidayList').value,
+      workSat:!!$('workSat')?.checked,
+      workSun:!!$('workSun')?.checked
+    },
+    computed:m,
+    updatedAt:new Date().toISOString()
+  };
+
+  persistStores();
+  refreshLists();
+  renderDataManager();
+  calc();
+
+  alert('บันทึก Machine และเชื่อมกับ Center แล้ว');
+}
 function refreshLists(){const cs=Object.values(centers).map(x=>x.center).filter(Boolean);const cl=$('centerList');if(cl)cl.innerHTML=cs.map(x=>`<option value="${esc(x)}">`).join('');const sel=$('centerSelect');const ck=centerKey(sel?sel.value:'');const ms=centerIsUnlocked(ck)?Object.values(machines).filter(x=>x.centerKey===ck).map(x=>x.machine).filter(Boolean):[];const ml=$('machineList');if(ml)ml.innerHTML=ms.map(x=>`<option value="${esc(x)}">`).join('');const msel=$('machineSelect');if(msel){const cur=msel.value;msel.innerHTML='<option value="">Select machine</option>'+ms.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');if(ms.includes(cur))msel.value=cur}}
 function loadCenter(name=$('centerSelect').value.trim(),force=false){const ck=centerKey(name),rec=centers[ck];if(!rec)return false;$('centerSelect').value=rec.center;if(!force&&!centerIsUnlocked(ck)){protectCenterView();$('centerSelect').value=rec.center;updateAccessUi();return false}Object.entries(rec.population||{}).forEach(([k,v])=>{if($(k))$(k).value=v});refreshLists();loadServiceArea();calc();updateAccessUi();return true}
 function loadSaved(){if(!requireUnlocked('เพื่อเปิด Machine'))return;const center=$('centerSelect').value.trim(),machine=$('machineSelect').value.trim();loadCenter(center);const rec=machines[machineKey(center,machine)];if(!rec){alert('ไม่พบ Machine นี้ภายใต้ Center ที่เลือก');return}$('machineSelect').value=rec.machine;Object.entries(rec.machineInputs||{}).forEach(([k,v])=>{if($(k)&&k!=='workingDays')$(k).value=['allow','imrt','eff'].includes(k)?(+v*100):v});if(rec.calendar){$('startDate').value=rec.calendar.startDate||$('startDate').value;$('endDate').value=rec.calendar.endDate||$('endDate').value;$('holidayList').value=rec.calendar.holidayList||'';if($('workSat'))$('workSat').checked=!!rec.calendar.workSat;if($('workSun'))$('workSun').checked=!!rec.calendar.workSun}calc();renderCalendar();updateTrackerQa()}
@@ -678,7 +807,84 @@ refreshMachineSelectV27();
  const modal=$v('machineModal'), name=$v('newMachineName');
  $v('addMachineBtn').onclick=()=>{let c=$v('centerSelect').value.trim();if(window.serverAuthenticated&&!c){const m=(window.currentServerUser?.memberships||[])[0];if(m?.center_name){c=m.center_name;$v('centerSelect').value=c;const ck=centerKey(c);if(!centers[ck])centers[ck]={center:c,population:{population:0,incidence:164,rtRate:.5},serviceArea:{country:'Thailand',provinces:[]},access:{},serverCenterId:m.center_id,updatedAt:new Date().toISOString()};persistStores();if(typeof loadCenter==='function')loadCenter(c,true);if(typeof loadServiceArea==='function')loadServiceArea()}}if(!c||!centerIsUnlocked(centerKey(c))){alert(window.serverAuthenticated?'บัญชีนี้ยังไม่ได้รับสิทธิ์ Center':'กรุณา Login Center ก่อน');return}name.value='';modal.style.display='flex';setTimeout(()=>name.focus(),0)};
  $v('cancelAddMachineBtn').onclick=()=>modal.style.display='none';
- $v('confirmAddMachineBtn').onclick=()=>{let nm=name.value.trim();if(!nm){alert('กรุณาระบุชื่อเครื่อง');return}let c=$v('centerSelect').value.trim(),ck=centerKey(c),mk=machineKey(c,nm);if(machines[mk]){alert('มี Machine ชื่อนี้แล้ว');return}machines[mk]={centerKey:ck,center:c,machine:nm,machineInputs:{},calendar:{},computed:{},updatedAt:new Date().toISOString()};persistStores();refreshMachineSelectV27();$v('machineSelect').value=nm;resetMachineInputs();modal.style.display='none';calc();};
+  $v('confirmAddMachineBtn').onclick=async()=>{
+   const nm=name.value.trim();
+   if(!nm){
+     alert('กรุณาระบุชื่อเครื่อง');
+     return;
+   }
+
+   const c=$v('centerSelect').value.trim();
+   const ck=centerKey(c);
+   const mk=machineKey(c,nm);
+
+   if(machines[mk]){
+     alert('มี Machine ชื่อนี้แล้ว');
+     return;
+   }
+
+   const membership=window.activeCenterMembership;
+
+   if(!membership||membership.role!=='center_admin'){
+     alert('Only Center Admin can create a machine.');
+     return;
+   }
+
+   const btn=$v('confirmAddMachineBtn');
+   btn.disabled=true;
+
+   try{
+     const r=await fetch('/api/machines',{
+       method:'POST',
+       headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({
+         center_id:membership.center_id,
+         name:nm
+       })
+     });
+
+     if(!r.ok){
+       let msg='Unable to create machine.';
+       try{
+         const e=await r.json();
+         msg=e.detail||msg;
+       }catch(_){}
+       throw new Error(msg);
+     }
+
+     const serverMachine=await r.json();
+
+     machines[mk]={
+       centerKey:ck,
+       center:c,
+       machine:nm,
+       serverMachineId:serverMachine.id,
+       machineInputs:{},
+       calendar:{},
+       computed:{},
+       updatedAt:new Date().toISOString()
+     };
+
+     persistStores();
+     refreshMachineSelectV27();
+
+     $v('machineSelect').value=nm;
+     resetMachineInputs();
+
+     modal.style.display='none';
+     calc();
+
+   }catch(e){
+     console.error('Create machine failed',e);
+     alert(e.message||'Unable to create machine.');
+   }finally{
+     btn.disabled=false;
+
+     if(window.applyActiveCenterRole){
+       window.applyActiveCenterRole();
+     }
+   }
+ };
  $v('saveMachineVisibleBtn').onclick=()=>saveMachine();
  ['workSat','workSun'].forEach(id=>$v(id)?.addEventListener('change',()=>{calc();renderCalendar();updateDashboard()}));
  $v('deleteSelectedMachineBtn').onclick=()=>{let c=$v('centerSelect').value.trim(),m=$v('machineSelect').value.trim();if(!m){alert('กรุณาเลือก Machine ที่ต้องการลบ');return}deleteMachine(machineKey(c,m));refreshMachineSelectV27();resetMachineInputs();calc()};
