@@ -1277,10 +1277,18 @@ window.loadAdminCenterIntelligence=async function(){
     const u=window.currentServerUser,m=window.activeCenterMembership;
     if(!u||u.system_admin)return;
     const viewer=!m||m.role==='viewer';
+    const machineAdmin=!!m&&m.role==='center_admin';
+
     window.viewerReadOnly=viewer;
+    window.machineAdmin=machineAdmin;
     document.body.classList.toggle('viewer-readonly',viewer);
     const ids=['addMachineBtn','saveMachineVisibleBtn','saveMachineBtn','deleteSelectedMachineBtn','confirmAddMachineBtn','saveHistoryBtn','clearHistoryBtn','importHistoryExcelBtn','historyExcelFile','ariaExcelFile','ariaReadBtn','ariaPreviewBtn','ariaImportBtn','ariaMapPatient','ariaMapCheckin','ariaMapStatus','ariaMapActivity','centerCountry','foreignAreas','foreignPopulation','historyFrom','historyFromPick','historyFromNative','historyTo','historyToPick','historyToNative','holidayList','workSat','workSun','startDate','endDate'];
     ids.forEach(id=>{const x=document.getElementById(id);if(x)x.disabled=viewer});
+['addMachineBtn','saveMachineVisibleBtn','saveMachineBtn',
+ 'deleteSelectedMachineBtn','confirmAddMachineBtn'].forEach(id=>{
+  const x=document.getElementById(id);
+  if(x)x.disabled=!machineAdmin;
+});
     document.querySelectorAll('input[name="allocationMode"],#thaiProvincePicker input,.allocation-percent-input,#capacityRows input,#capacityRows select,#capacityRows textarea,#calendarGrid input,#calendarGrid select,#calendarGrid textarea,#populationRows input,#populationRows select,#populationRows textarea,#forecastPage input,#forecastPage select,#forecastPage textarea,#forecastPage button').forEach(x=>x.disabled=viewer);
     const note=document.getElementById('backendStatus');if(note&&viewer)note.textContent='Connected • Viewer read-only for active center';
    };
