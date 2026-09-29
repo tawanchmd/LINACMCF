@@ -427,7 +427,68 @@ async function saveMachine(){
 function refreshLists(){const cs=Object.values(centers).map(x=>x.center).filter(Boolean);const cl=$('centerList');if(cl)cl.innerHTML=cs.map(x=>`<option value="${esc(x)}">`).join('');const sel=$('centerSelect');const ck=centerKey(sel?sel.value:'');const ms=centerIsUnlocked(ck)?Object.values(machines).filter(x=>x.centerKey===ck).map(x=>x.machine).filter(Boolean):[];const ml=$('machineList');if(ml)ml.innerHTML=ms.map(x=>`<option value="${esc(x)}">`).join('');const msel=$('machineSelect');if(msel){const cur=msel.value;msel.innerHTML='<option value="">Select machine</option>'+ms.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');if(ms.includes(cur))msel.value=cur}}
 function loadCenter(name=$('centerSelect').value.trim(),force=false){const ck=centerKey(name),rec=centers[ck];if(!rec)return false;$('centerSelect').value=rec.center;if(!force&&!centerIsUnlocked(ck)){protectCenterView();$('centerSelect').value=rec.center;updateAccessUi();return false}Object.entries(rec.population||{}).forEach(([k,v])=>{if($(k))$(k).value=v});refreshLists();loadServiceArea();calc();updateAccessUi();return true}
 function loadSaved(){if(!requireUnlocked('เพื่อเปิด Machine'))return;const center=$('centerSelect').value.trim(),machine=$('machineSelect').value.trim();loadCenter(center);const rec=machines[machineKey(center,machine)];if(!rec){alert('ไม่พบ Machine นี้ภายใต้ Center ที่เลือก');return}$('machineSelect').value=rec.machine;Object.entries(rec.machineInputs||{}).forEach(([k,v])=>{if($(k)&&k!=='workingDays')$(k).value=['allow','imrt','eff'].includes(k)?(+v*100):v});if(rec.calendar){$('startDate').value=rec.calendar.startDate||$('startDate').value;$('endDate').value=rec.calendar.endDate||$('endDate').value;$('holidayList').value=rec.calendar.holidayList||'';if($('workSat'))$('workSat').checked=!!rec.calendar.workSat;if($('workSun'))$('workSun').checked=!!rec.calendar.workSun}calc();renderCalendar();updateTrackerQa()}
-function deleteMachine(mk){let r=machines[mk];if(r&&!centerIsUnlocked(r.centerKey)){alert('กรุณา Unlock Center ก่อนลบ Machine');return}if(!r||!confirm(`Delete machine ${r.machine} and its saved daily history?`))return;localStorage.removeItem('histDaily|'+mk);delete machines[mk];persistStores();renderDataManager();refreshLists();calc()}
+async function deleteMachine(mk){
+  const r=machines[mk];
+
+  if(r&&!centerIsUnlocked(r.centerKey)){
+    alert('กรุณา Unlock Center ก่อนลบ Machine');
+    return false;
+  }
+
+  if(!r)return false;
+
+  const membership=window.activeCenterMembership;
+
+  if(window.serverAuthenticated &&
+     (!membership||membership.role!=='center_admin')){
+    alert('Only Center Admin can delete a machine.');
+    return false;
+  }
+
+  if(!confirm(`Delete machine ${r.machine} and its saved daily history?`)){
+    return false;
+  }
+
+  // Server-backed machines must be deleted from DB first.
+  if(window.serverAuthenticated){
+    if(!r.serverMachineId){
+      alert('This machine is not linked to the server database yet.');
+      return false;
+    }
+
+    try{
+      const res=await fetch(
+        '/api/machines/'+encodeURIComponent(r.serverMachineId),
+        {method:'DELETE'}
+      );
+
+      if(!res.ok){
+        let msg='Unable to delete machine.';
+        try{
+          const e=await res.json();
+          msg=e.detail||msg;
+        }catch(_){}
+        throw new Error(msg);
+      }
+
+    }catch(e){
+      console.error('Delete machine failed',e);
+      alert(e.message||'Unable to delete machine.');
+      return false;
+    }
+  }
+
+  // Only remove workspace/history after DB deletion succeeds.
+  localStorage.removeItem('histDaily|'+mk);
+  delete machines[mk];
+
+  persistStores();
+  renderDataManager();
+  refreshLists();
+  calc();
+
+  return true;
+}
 function deleteCenter(ck){let r=centers[ck];if(r&&!centerIsUnlocked(ck)){alert('กรุณา Unlock Center ก่อนลบ Center');return}if(!r)return;let child=Object.entries(machines).filter(([k,v])=>v.centerKey===ck);if(!confirm(`Delete center ${r.center}, ${child.length} machine(s), and their daily history?`))return;child.forEach(([mk])=>{localStorage.removeItem('histDaily|'+mk);delete machines[mk]});delete centers[ck];persistStores();if(centerKey($('centerSelect').value)===ck){$('centerSelect').value='';$('machineSelect').value=''}renderDataManager();refreshLists();calc()}
 function renderDataManager(){let cvals=Object.entries(centers);if(!cvals.length){$('dataManager').textContent='ยังไม่มีข้อมูลที่บันทึก';return}let html='<table><tr><th>Center / Machine</th><th>Access</th><th>Visible information</th><th>Action</th></tr>';cvals.forEach(([ck,c])=>{let open=centerIsUnlocked(ck),children=Object.entries(machines).filter(([k,v])=>v.centerKey===ck);html+=`<tr class="center-row ${open?'':'protected-row'}"><td>${esc(c.center)}</td><td><span class="privacy-pill ${open?'open':''}">${open?'Unlocked':'Protected'}</span></td><td>${open?`Population ${fmt(+c.population?.population||0,0)} • ${children.length} machine(s)`:'Parameters and machine details hidden'}</td><td><button onclick="openCenter(decodeURIComponent('${encodeURIComponent(ck)}'))">${open?'Open':'Select / Unlock'}</button>${open?` <button onclick="deleteCenter(decodeURIComponent('${encodeURIComponent(ck)}'))">Delete</button>`:''}</td></tr>`;if(open){children.forEach(([mk,m])=>{let h={};try{h=JSON.parse(localStorage.getItem('histDaily|'+mk)||'{}')}catch(e){}html+=`<tr class="machine-child"><td>↳ ${esc(m.machine)}</td><td></td><td><span class="muted">${fmt(+m.machineInputs?.op||0,0)} min/day • IMRT ${fmt(100*(+m.machineInputs?.imrt||0),0)}% • Staff ${fmt(100*(+m.machineInputs?.eff||0),0)}% • ${Object.keys(h).length} historical days</span></td><td><button onclick="openMachine(decodeURIComponent('${encodeURIComponent(mk)}'))">Load</button> <button onclick="deleteMachine(decodeURIComponent('${encodeURIComponent(mk)}'))">Delete</button></td></tr>`})}});html+='</table>';$('dataManager').innerHTML=html}
 function openCenter(ck){let c=centers[ck];if(!c)return;$('centerSelect').value=c.center;$('machineSelect').value='';if(centerIsUnlocked(ck))loadCenter(c.center,true);else protectCenterView();$('centerSelect').value=c.center;updateAccessUi();renderDataManager();renderCalendar();updateTrackerQa()}
@@ -887,7 +948,23 @@ refreshMachineSelectV27();
  };
  $v('saveMachineVisibleBtn').onclick=()=>saveMachine();
  ['workSat','workSun'].forEach(id=>$v(id)?.addEventListener('change',()=>{calc();renderCalendar();updateDashboard()}));
- $v('deleteSelectedMachineBtn').onclick=()=>{let c=$v('centerSelect').value.trim(),m=$v('machineSelect').value.trim();if(!m){alert('กรุณาเลือก Machine ที่ต้องการลบ');return}deleteMachine(machineKey(c,m));refreshMachineSelectV27();resetMachineInputs();calc()};
+$v('deleteSelectedMachineBtn').onclick=async()=>{
+  const c=$v('centerSelect').value.trim();
+  const m=$v('machineSelect').value.trim();
+
+  if(!m){
+    alert('กรุณาเลือก Machine ที่ต้องการลบ');
+    return;
+  }
+
+  const deleted=await deleteMachine(machineKey(c,m));
+
+  if(!deleted)return;
+
+  refreshMachineSelectV27();
+  resetMachineInputs();
+  calc();
+};
  function iso(d){return d.toISOString().slice(0,10)}
  function initRange(){let now=new Date(),a=new Date(now);a.setDate(a.getDate()-29);if(!$v('historyFrom').value)$v('historyFrom').value=iso(a);if(!$v('historyTo').value)$v('historyTo').value=iso(now)}
  window._entryZoom=1;window._entryYScale=1;
