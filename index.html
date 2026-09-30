@@ -1476,33 +1476,175 @@ window.loadAdminAuditLogs=async function(){
  }catch(e){box.innerHTML='<div class="hint">Unable to load audit log.</div>'}
 };
 window.loadAdminCenterIntelligence=async function(){
- const box=document.getElementById('adminCenterIntelligenceTable'); if(!box)return;
- box.innerHTML='<div class="hint">Loading center intelligence…</div>';
+ const box=document.getElementById('adminCenterIntelligenceTable');
+ if(!box)return;
+
+ box.innerHTML='<div class="hint">Loading center intelligence...</div>';
+
  try{
-  const r=await fetch('/api/admin/center-intelligence',{credentials:'same-origin'});
-  if(!r.ok)throw new Error('HTTP '+r.status); const j=await r.json(),roleOrder={center_admin:0,data_entry:1,viewer:2};const rows=(j.rows||[]).slice().sort((a,b)=>(a.center_name||'').localeCompare(b.center_name||'')-0||((roleOrder[a.center_role]??99)-(roleOrder[b.center_role]??99))||(a.name||a.email||'').localeCompare(b.name||b.email||''));
-  const wrap=document.createElement('div');wrap.className='admin-intel-wrap';
+  const r=await fetch(
+   '/api/admin/center-intelligence',
+   {credentials:'same-origin'}
+  );
+
+  if(!r.ok)throw new Error('HTTP '+r.status);
+
+  const j=await r.json();
+  const roleOrder={center_admin:0,data_entry:1,viewer:2};
+
+  const rows=(j.rows||[])
+   .slice()
+   .sort((a,b)=>
+    (a.center_name||'').localeCompare(b.center_name||'')
+   );
+
+  const wrap=document.createElement('div');
+  wrap.className='admin-intel-wrap';
+
   const table=document.createElement('table');
+
   const head=document.createElement('tr');
-  ['Center','Name / email','Role','Area of responsibility','Machines','Modeled capacity','Current utilization','Capacity / Logistic interpretation'].forEach((v,i)=>{const th=document.createElement('th');th.textContent=v;th.className='admin-sortable';th.onclick=()=>window.sortAdminTable(th,i,i===4||i===5||i===6);head.appendChild(th)});
-  const thead=document.createElement('thead');thead.appendChild(head);table.appendChild(thead);const tbody=document.createElement('tbody');
-  rows.forEach((x,idx)=>{
-   const tr=document.createElement('tr'),centerName=x.center_name||'';
-   const centerCell=document.createElement('td');centerCell.textContent=centerName;centerCell.style.fontWeight='700';tr.appendChild(centerCell);
+
+  [
+   'Center',
+   'Members',
+   'Area of responsibility',
+   'Machines',
+   'Modeled capacity',
+   'Current utilization',
+   'Capacity / Logistic interpretation'
+  ].forEach((v,i)=>{
+   const th=document.createElement('th');
+   th.textContent=v;
+   th.className='admin-sortable';
+   th.onclick=()=>window.sortAdminTable(
+    th,
+    i,
+    i===3||i===4||i===5
+   );
+   head.appendChild(th);
+  });
+
+  const thead=document.createElement('thead');
+  thead.appendChild(head);
+  table.appendChild(thead);
+
+  const tbody=document.createElement('tbody');
+
+  rows.forEach(x=>{
+   const tr=document.createElement('tr');
+
+   const centerCell=document.createElement('td');
+   centerCell.textContent=x.center_name||'';
+   centerCell.style.fontWeight='700';
+   tr.appendChild(centerCell);
+
+   const members=(x.members||[])
+    .slice()
+    .sort((a,b)=>
+     ((roleOrder[a.role]??99)-(roleOrder[b.role]??99))
+     ||(a.name||a.email||'').localeCompare(
+      b.name||b.email||''
+     )
+    );
+
+   const memberCell=document.createElement('td');
+
+   if(members.length){
+    members.forEach((m,i)=>{
+     const item=document.createElement('div');
+
+     if(i>0){
+      item.style.marginTop='8px';
+      item.style.paddingTop='8px';
+      item.style.borderTop='1px solid #e5e7eb';
+     }
+
+     const name=document.createElement('div');
+     name.textContent=m.name||m.email||'';
+     name.style.fontWeight='600';
+
+     const detail=document.createElement('div');
+     detail.className='muted';
+
+     const roleLabel={
+      center_admin:'Center Admin',
+      data_entry:'Data Entry',
+      viewer:'Viewer'
+     }[m.role]||m.role||'';
+
+     detail.textContent=
+      roleLabel+
+      (
+       m.email&&m.email!==m.name
+        ?' · '+m.email
+        :''
+      );
+
+     item.appendChild(name);
+     item.appendChild(detail);
+     memberCell.appendChild(item);
+    });
+   }else{
+    memberCell.textContent='—';
+   }
+
+   tr.appendChild(memberCell);
+
    const vals=[
-    (x.name||'')+(x.email&&x.email!==x.name?'\n'+x.email:''),x.center_role||'',
     (x.area_of_responsibility||[]).join(', ')||'—',
-    (x.machine_count||0)+' machine(s)'+((x.machine_names||[]).length?'\n'+x.machine_names.join(', '):''),
-    Number(x.modeled_capacity||0).toFixed(0)+' courses/year',
-    x.current_utilization_pct==null?'—':Number(x.current_utilization_pct).toFixed(0)+'%',
+
+    (x.machine_count||0)+' machine(s)'
+     +(
+      (x.machine_names||[]).length
+       ?'\n'+x.machine_names.join(', ')
+       :''
+     ),
+
+    Number(x.modeled_capacity||0).toFixed(0)
+     +' courses/year',
+
+    x.current_utilization_pct==null
+     ?'—'
+     :Number(x.current_utilization_pct).toFixed(0)+'%',
+
     x.capacity_interpretation||'Insufficient data'
    ];
-   vals.forEach((v,i)=>{const td=document.createElement('td');td.textContent=v;td.style.whiteSpace=i===3?'pre-line':'normal';tr.appendChild(td)});
+
+   vals.forEach((v,i)=>{
+    const td=document.createElement('td');
+    td.textContent=v;
+
+    if(i===1){
+     td.style.whiteSpace='pre-line';
+    }
+
+    tr.appendChild(td);
+   });
+
    tbody.appendChild(tr);
   });
-  if(!rows.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=8;td.textContent='No approved center memberships yet.';tr.appendChild(td);tbody.appendChild(tr)}
-  table.appendChild(tbody);wrap.appendChild(table);box.innerHTML='';box.appendChild(wrap);
- }catch(e){box.textContent='Unable to load national center intelligence.'}
+
+  if(!rows.length){
+   const tr=document.createElement('tr');
+   const td=document.createElement('td');
+
+   td.colSpan=7;
+   td.textContent='No approved center memberships yet.';
+
+   tr.appendChild(td);
+   tbody.appendChild(tr);
+  }
+
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+
+  box.innerHTML='';
+  box.appendChild(wrap);
+
+ }catch(e){
+  box.textContent='Unable to load national center intelligence.';
+ }
 };
 (function(){
  window.serverAuthenticated=false;

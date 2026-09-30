@@ -40,7 +40,47 @@ class AdminSafetyTests(unittest.TestCase):
   r=self.client.post("/api/admin/memberships",json={"user_id":self.member,"center_id":self.c1,"role":"viewer"});self.assertEqual(r.status_code,409,r.text)
   self.assertEqual(self.client.patch(f"/api/admin/users/{self.member}/status",json={"is_active":True}).status_code,200)
 
- def test_04_health_endpoint_remains_healthy(self):
+ def test_04_center_intelligence_groups_members_by_center(self):
+  u1=self.client.post(
+   "/api/admin/users",
+   json={"email":"centeradmin@test.local","password":"CenterAdminPassword123!"}
+  ).json()["id"]
+
+  u2=self.client.post(
+   "/api/admin/users",
+   json={"email":"dataentry@test.local","password":"DataEntryPassword123!"}
+  ).json()["id"]
+
+  r=self.client.post(
+   "/api/admin/memberships",
+   json={"user_id":u1,"center_id":self.c1,"role":"center_admin"}
+  )
+  self.assertEqual(r.status_code,200,r.text)
+
+  r=self.client.post(
+   "/api/admin/memberships",
+   json={"user_id":u2,"center_id":self.c1,"role":"data_entry"}
+  )
+  self.assertEqual(r.status_code,200,r.text)
+
+  r=self.client.get("/api/admin/center-intelligence")
+  self.assertEqual(r.status_code,200,r.text)
+
+  rows=[
+   x for x in r.json()["rows"]
+   if x["center_name"]=="Safety Center"
+  ]
+
+  self.assertEqual(len(rows),1)
+
+  members=rows[0]["members"]
+  self.assertGreaterEqual(len(members),2)
+
+  by_email={x["email"]:x["role"] for x in members}
+
+  self.assertEqual(by_email["centeradmin@test.local"],"center_admin")
+  self.assertEqual(by_email["dataentry@test.local"],"data_entry")
+ def test_05_health_endpoint_remains_healthy(self):
   r=self.client.get("/health");self.assertEqual(r.status_code,200,r.text)
   self.assertEqual(r.json()["status"],"ok");self.assertEqual(r.json()["database"],"connected")
 

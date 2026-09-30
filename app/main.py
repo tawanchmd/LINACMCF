@@ -664,26 +664,68 @@ def national_rollup(u:User=Depends(current_user),s:Session=Depends(db)):
             "modeled_capacity":sum(x["modeled_capacity"] for x in rows)}
 
 @app.get("/api/admin/center-intelligence")
-def admin_center_intelligence(u:User=Depends(current_user),s:Session=Depends(db)):
-    if not u.is_system_admin: raise HTTPException(403,"System admin required")
-    rows=_national_rollup_rows(s)
-    by_id={x.get("center_id"):x for x in rows if x.get("center_id") is not None}
-    users=[]
+def admin_center_intelligence(
+    u:User=Depends(current_user),
+    s:Session=Depends(db)
+):
+    if not u.is_system_admin:
+        raise HTTPException(403,"System admin required")
+
+    rollup_rows=_national_rollup_rows(s)
+    by_id={
+        x.get("center_id"):x
+        for x in rollup_rows
+        if x.get("center_id") is not None
+    }
+
+    center_rows={}
+
     member_rows=s.execute(
         select(CenterMembership,User,Center,UserProfile)
         .join(User,User.id==CenterMembership.user_id)
         .join(Center,Center.id==CenterMembership.center_id)
         .outerjoin(UserProfile,UserProfile.user_id==User.id)
     ).all()
+
     for m,usr,ctr,prof in member_rows:
         agg=by_id.get(m.center_id,{})
-        users.append({"name":prof.full_name if prof else usr.email,"email":usr.email,"center_name":ctr.name,
-            "center_role":m.role,"area_of_responsibility":(agg.get("service_area") or {}).get("provinces",[]),
-            "machine_names":[x.get("name") for x in agg.get("machines",[])],"machine_count":agg.get("machine_count",0),
-            "modeled_capacity":agg.get("modeled_capacity",0),"current_utilization_pct":agg.get("current_utilization_pct"),
-            "capacity_interpretation":agg.get("capacity_interpretation","Insufficient data")})
-    return {"rows":users}
 
+        row=center_rows.setdefault(
+            m.center_id,
+            {
+                "center_id":ctr.id,
+                "center_name":ctr.name,
+                "members":[],
+                "area_of_responsibility":
+                    (agg.get("service_area") or {}).get("provinces",[]),
+                "machine_names":[
+                    x.get("name")
+                    for x in agg.get("machines",[])
+                ],
+                "machine_count":agg.get("machine_count",0),
+                "modeled_capacity":agg.get("modeled_capacity",0),
+                "current_utilization_pct":
+                    agg.get("current_utilization_pct"),
+                "capacity_interpretation":
+                    agg.get(
+                        "capacity_interpretation",
+                        "Insufficient data"
+                    )
+            }
+        )
+
+        row["members"].append({
+            "name":prof.full_name if prof else usr.email,
+            "email":usr.email,
+            "role":m.role
+        })
+
+    return {
+        "rows":sorted(
+            center_rows.values(),
+            key=lambda x:x["center_name"].lower()
+        )
+    }
 @app.get("/api/centers/{center_id}/state")
 def get_center_state(center_id:int,u:User=Depends(current_user),s:Session=Depends(db)):
     if not can_center(s,u,center_id,"read"): raise HTTPException(403,"Center access denied")
