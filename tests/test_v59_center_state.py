@@ -59,5 +59,62 @@ class CenterScopedStateTests(unittest.TestCase):
   a=self.client.get(f"/api/centers/{self.a['id']}/state").json()["payload"]
   b=self.client.get(f"/api/centers/{self.b['id']}/state").json()["payload"]
   self.assertNotEqual(a,b)
+ def test_06_center_report_uses_requested_center_state(self):
+  # Prepare distinct authoritative CenterState payloads as system admin.
+  self.client.post("/api/auth/logout")
+  self.client.post(
+   "/api/auth/login",
+   json={
+    "email":"admin@test.local",
+    "password":"AdminPassword123!"
+   }
+  )
+
+  ra=self.client.put(
+   f"/api/centers/{self.a['id']}/state",
+   json={
+    "payload":{
+     "marker":"REPORT-A",
+     "population":{"population":111}
+    }
+   }
+  )
+  self.assertEqual(ra.status_code,200,ra.text)
+
+  rb=self.client.put(
+   f"/api/centers/{self.b['id']}/state",
+   json={
+    "payload":{
+     "marker":"REPORT-B",
+     "population":{"population":222}
+    }
+   }
+  )
+  self.assertEqual(rb.status_code,200,rb.text)
+
+  self.client.post("/api/auth/logout")
+  self.client.post(
+   "/api/auth/login",
+   json={
+    "email":"writer@test.local",
+    "password":"WriterPassword123!"
+   }
+  )
+
+  report_a=self.client.get(
+   "/api/report/center-snapshot",
+   params={"center_id":self.a["id"]}
+  )
+  self.assertEqual(report_a.status_code,200,report_a.text)
+  self.assertEqual(report_a.json()["center"]["id"],self.a["id"])
+  self.assertEqual(report_a.json()["payload"]["marker"],"REPORT-A")
+
+  report_b=self.client.get(
+   "/api/report/center-snapshot",
+   params={"center_id":self.b["id"]}
+  )
+  self.assertEqual(report_b.status_code,200,report_b.text)
+  self.assertEqual(report_b.json()["center"]["id"],self.b["id"])
+  self.assertEqual(report_b.json()["payload"]["marker"],"REPORT-B")
 
 if __name__=="__main__": unittest.main()

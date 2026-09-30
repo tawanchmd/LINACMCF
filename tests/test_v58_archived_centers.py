@@ -52,7 +52,7 @@ class ArchivedCenterIsolationTests(unittest.TestCase):
   self.client.post(f"/api/admin/centers/{self.center['id']}/archive")
   self.client.post("/api/auth/logout")
   self.client.post("/api/auth/login",json={"email":"centeruser@test.local","password":"CenterUserPassword123!"})
-  r=self.client.get("/api/report/center-snapshot")
+  r=self.client.get("/api/report/center-snapshot",params={"center_id":self.center["id"]})
   self.assertEqual(r.status_code,403,r.text)
 
 if __name__=="__main__": unittest.main()

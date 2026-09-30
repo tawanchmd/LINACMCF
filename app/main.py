@@ -804,25 +804,66 @@ def forecast_api(x:ForecastIn,u:User=Depends(current_user)):
             "upper":[v+residual*math.sqrt(i+1) for i,v in enumerate(fc)],
             "method":"rolling-origin MAE; approximate residual band"}
 
+def _report_snapshot_for_user(s,u,center_id:int):
+    """Read-only adapter for Center Report using authoritative CenterState."""
 
-def _report_snapshot_for_user(s,u):
-    """Read-only adapter for Center Report. Never mutates AppState/core workspace."""
-    ms=[m for m in memberships(s,u) if (s.get(Center,m.center_id) and s.get(Center,m.center_id).is_active)]
     if u.is_system_admin:
-        raise HTTPException(403,"Center Report is for center-scoped users")
-    if not ms: raise HTTPException(403,"No center membership")
-    m=ms[0]; ctr=s.get(Center,m.center_id)
-    key=f"browser-v5:user:{u.id}"
-    row=s.scalar(select(AppState).where(AppState.state_key==key))
-    payload=json.loads(row.payload) if row and row.payload else {}
-    return {"generated_for":{"user_id":u.id,"email":u.email,"role":m.role},
-            "center":{"id":ctr.id,"name":ctr.name,"country":ctr.country},
-            "snapshot_updated_at":row.updated_at.isoformat() if row and row.updated_at else None,
-            "payload":payload}
+        raise HTTPException(
+            403,
+            "Center Report is for center-scoped users"
+        )
+
+    if not can_center(s,u,center_id,"read"):
+        raise HTTPException(403,"Center access denied")
+
+    ctr=s.get(Center,center_id)
+
+    if not ctr or not ctr.is_active:
+        raise HTTPException(403,"Center access denied")
+
+    membership=s.scalar(
+        select(CenterMembership).where(
+            CenterMembership.user_id==u.id,
+            CenterMembership.center_id==center_id
+        )
+    )
+
+    if not membership:
+        raise HTTPException(403,"Center access denied")
+
+    row=s.scalar(
+        select(CenterState).where(
+            CenterState.center_id==center_id
+        )
+    )
+
+    payload=_state_obj(row) if row else {}
+
+    return {
+        "generated_for":{
+            "user_id":u.id,
+            "email":u.email,
+            "role":membership.role
+        },
+        "center":{
+            "id":ctr.id,
+            "name":ctr.name,
+            "country":ctr.country
+        },
+        "snapshot_updated_at":
+            row.updated_at.isoformat()
+            if row and row.updated_at
+            else None,
+        "payload":payload
+    }
 
 @app.get("/api/report/center-snapshot")
-def center_report_snapshot(u:User=Depends(current_user),s:Session=Depends(db)):
-    return _report_snapshot_for_user(s,u)
+def center_report_snapshot(
+    center_id:int,
+    u:User=Depends(current_user),
+    s:Session=Depends(db)
+):
+    return _report_snapshot_for_user(s,u,center_id)
 
 @app.get("/center-report")
 def center_report_page():
