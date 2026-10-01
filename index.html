@@ -340,11 +340,45 @@ async function saveMachine(){
   const inputs=currentMachineInput();
   const m=calc();
 
-  // v5.9 server-backed machine must already have a DB identity.
+  // v5.9 reconcile legacy CenterState machine with an existing DB machine.
   if(window.serverAuthenticated){
     if(!existing.serverMachineId){
-      alert('This machine is not linked to the server database yet.');
-      return;
+      try{
+        const listResponse=await fetch(
+          '/api/machines?center_id='+
+          encodeURIComponent(membership.center_id)
+        );
+
+        if(!listResponse.ok){
+          let msg='Unable to check server machine registry.';
+          try{
+            const e=await listResponse.json();
+            msg=e.detail||msg;
+          }catch(_){}
+          throw new Error(msg);
+        }
+
+        const serverMachines=await listResponse.json();
+
+        const matched=serverMachines.find(
+          x=>String(x.name||'').trim()===machine
+        );
+
+        if(!matched){
+          alert(
+            'This legacy machine is not present in the server database yet. '+
+            'No server machine was created automatically.'
+          );
+          return;
+        }
+
+        existing.serverMachineId=matched.id;
+
+      }catch(e){
+        console.error('Machine reconciliation failed',e);
+        alert(e.message||'Unable to reconcile machine with server database.');
+        return;
+      }
     }
 
     try{
