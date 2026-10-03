@@ -504,6 +504,19 @@ def preview_center_state_reconciliation(s:Session,center_id:int):
     st=s.scalar(
         select(CenterState).where(CenterState.center_id==center_id)
     )
+    center=s.get(Center,center_id)
+    if not center:
+        return {
+            "center_id":center_id,
+            "machines_to_create":[],
+            "machines_to_update":[],
+            "history_rows_to_create":0,
+            "history_rows_to_update":0
+        }
+
+    authoritative_center_key=" ".join(
+        str(center.name or "").strip().lower().split()
+    )
     if not st:
         return {
             "center_id":center_id,
@@ -529,8 +542,16 @@ def preview_center_state_reconciliation(s:Session,center_id:int):
         if not isinstance(m,dict):
             continue
 
-        if str(m.get("centerKey") or "").strip().lower() != \
-           str(mk).split("|",1)[0].strip().lower():
+        machine_center_key=" ".join(
+            str(m.get("centerKey") or "").strip().lower().split()
+        )
+        key_center_key=" ".join(
+            str(mk).split("|",1)[0].strip().lower().split()
+        )
+
+        if machine_center_key != authoritative_center_key:
+            continue
+        if key_center_key != authoritative_center_key:
             continue
 
         name=str(m.get("machine") or "").strip()
@@ -589,7 +610,13 @@ def reconcile_center_state_to_canonical(s:Session,center_id:int):
     )
     if not st:
         return {"machines":0,"history_rows":0}
+    center=s.get(Center,center_id)
+    if not center:
+        return {"machines":0,"history_rows":0}
 
+    authoritative_center_key=" ".join(
+        str(center.name or "").strip().lower().split()
+    )
     payload=_state_obj(st)
     ms=_json_obj(payload.get("machines"))
     histories=payload.get("histories") or {}
@@ -601,8 +628,16 @@ def reconcile_center_state_to_canonical(s:Session,center_id:int):
         if not isinstance(m,dict):
             continue
 
-        if str(m.get("centerKey") or "").strip().lower() != \
-           str(mk).split("|",1)[0].strip().lower():
+        machine_center_key=" ".join(
+            str(m.get("centerKey") or "").strip().lower().split()
+        )
+        key_center_key=" ".join(
+            str(mk).split("|",1)[0].strip().lower().split()
+        )
+
+        if machine_center_key != authoritative_center_key:
+            continue
+        if key_center_key != authoritative_center_key:
             continue
 
         name=str(m.get("machine") or "").strip()

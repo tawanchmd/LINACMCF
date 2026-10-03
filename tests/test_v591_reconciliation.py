@@ -285,5 +285,71 @@ class V591ReconciliationTests(unittest.TestCase):
 
         s.close()
 
+    def test_07_rejects_cross_center_contaminated_machine(self):
+        import json
+
+        from app.models import CenterState, Machine, DailyHistory
+        from app.main import (
+            preview_center_state_reconciliation,
+            reconcile_center_state_to_canonical,
+        )
+
+        s = self.SessionLocal()
+
+        state = s.query(CenterState).filter(
+            CenterState.center_id == self.a_id
+        ).one()
+
+        payload = json.loads(state.payload)
+
+        # Inject a machine belonging to Center B into Center A's state.
+        payload["machines"]["b|vitalbeam"] = {
+            "center": "B",
+            "centerKey": "b",
+            "machine": "Vitalbeam",
+            "machineInputs": {
+                "op": 720,
+                "idle": 60,
+                "imrt": 0.35,
+                "imrtTime": 14,
+                "crtTime": 8,
+                "eff": 1,
+                "avgFrac": 15,
+                "workingDays": 261,
+                "allow": 0.9885,
+            },
+        }
+
+        payload["histories"]["histDaily|b|vitalbeam"] = json.dumps({
+            "2025-04-01": {
+                "newPatients": 9,
+                "activePatients": 30,
+            }
+        })
+
+        state.payload = json.dumps(payload)
+        s.commit()
+
+        preview = preview_center_state_reconciliation(s, self.a_id)
+
+        # Center A may contain Infinity, but must never accept
+        # contaminated Center B machine/history.
+        self.assertNotIn("Vitalbeam", preview["machines_to_create"])
+        self.assertNotIn("Vitalbeam", preview["machines_to_update"])
+
+        reconcile_center_state_to_canonical(s, self.a_id)
+
+        contaminated = s.query(Machine).filter(
+            Machine.center_id == self.a_id,
+            Machine.name == "Vitalbeam",
+        ).all()
+
+        self.assertEqual(contaminated, [])
+
+        # Only Center A's original three history rows should exist.
+        self.assertEqual(s.query(DailyHistory).count(), 3)
+
+        s.close()
+
 if __name__=="__main__":
     unittest.main()
