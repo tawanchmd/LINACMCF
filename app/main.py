@@ -499,6 +499,110 @@ def _json_obj(v):
     try: return json.loads(v)
     except Exception: return {}
 
+def reconcile_center_state_to_canonical(s:Session,center_id:int):
+    """Upsert canonical Machine/DailyHistory rows from one CenterState.
+    Safe to run repeatedly. Does not delete canonical rows.
+    """
+    st=s.scalar(
+        select(CenterState).where(CenterState.center_id==center_id)
+    )
+    if not st:
+        return {"machines":0,"history_rows":0}
+
+    payload=_state_obj(st)
+    ms=_json_obj(payload.get("machines"))
+    histories=payload.get("histories") or {}
+
+    machine_count=0
+    history_count=0
+
+    for mk,m in ms.items():
+        if not isinstance(m,dict):
+            continue
+
+        if str(m.get("centerKey") or "").strip().lower() != \
+           str(mk).split("|",1)[0].strip().lower():
+            continue
+
+        name=str(m.get("machine") or "").strip()
+        if not name:
+            continue
+
+        inputs=m.get("machineInputs") or {}
+
+        machine=s.scalar(
+            select(Machine).where(
+                Machine.center_id==center_id,
+                Machine.name==name
+            )
+        )
+
+        values={
+            "model":m.get("model"),
+            "operating_minutes":inputs.get("op"),
+            "idle_minutes":inputs.get("idle"),
+            "imrt_proportion":inputs.get("imrt"),
+            "imrt_cycle_minutes":inputs.get("imrtTime"),
+            "d3_cycle_minutes":inputs.get("crtTime"),
+            "staff_efficacy":inputs.get("eff"),
+            "avg_course_fractions":inputs.get("avgFrac"),
+            "working_days":inputs.get("workingDays"),
+            "linac_capacity_allowance":inputs.get("allow"),
+        }
+
+        if machine is None:
+            machine=Machine(
+                center_id=center_id,
+                name=name,
+                **values
+            )
+            s.add(machine)
+            s.flush()
+        else:
+            for field,value in values.items():
+                setattr(machine,field,value)
+
+        machine_count+=1
+
+        h=_json_obj(histories.get("histDaily|"+mk))
+
+        for day,v in h.items():
+            if not isinstance(v,dict):
+                continue
+
+            try:
+                d=date.fromisoformat(day)
+                new_patients=int(v.get("newPatients") or 0)
+                active_patients=int(v.get("activePatients") or 0)
+            except (ValueError,TypeError):
+                continue
+
+            row=s.scalar(
+                select(DailyHistory).where(
+                    DailyHistory.machine_id==machine.id,
+                    DailyHistory.date==d
+                )
+            )
+
+            if row:
+                row.new_patients=new_patients
+                row.active_patients=active_patients
+            else:
+                s.add(DailyHistory(
+                    machine_id=machine.id,
+                    date=d,
+                    new_patients=new_patients,
+                    active_patients=active_patients
+                ))
+
+            history_count+=1
+
+    s.commit()
+
+    return {
+        "machines":machine_count,
+        "history_rows":history_count
+    }
 def _national_rollup_rows(s:Session):
     """Shared national read model assembled from authoritative center-scoped state.
 
