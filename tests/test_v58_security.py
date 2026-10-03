@@ -46,6 +46,6 @@ class SystemAdminSafetyTests(unittest.TestCase):
  def test_04_health_reports_v58(self):
   r=self.client.get("/health")
   self.assertEqual(r.status_code,200,r.text)
-  self.assertEqual(r.json()["ui"],"v5.8")
+  self.assertEqual(r.json()["ui"],"v5.9.1")
 
 if __name__=="__main__": unittest.main()

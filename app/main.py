@@ -97,7 +97,7 @@ def audit(s,u,action,center_id=None,detail=None):
 
 @app.get("/health")
 def health(s:Session=Depends(db)):
-    s.execute(text("SELECT 1")); return {"status":"ok","database":"connected","ui":"v5.8","api":"v5.9","auth":"rbac","isolation":"center-scoped-state-foundation"}
+    s.execute(text("SELECT 1")); return {"status":"ok","database":"connected","ui":"v5.9.1","api":"v5.9","auth":"rbac","isolation":"center-scoped-state-foundation"}
 
 @app.get("/api/auth/setup-status")
 def setup_status(s:Session=Depends(db)):
