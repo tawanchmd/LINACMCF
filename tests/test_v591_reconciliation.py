@@ -241,6 +241,49 @@ class V591ReconciliationTests(unittest.TestCase):
 
         s.close()
 
+    def test_05_preview_is_read_only(self):
+        from app.models import Machine,DailyHistory
+        from app.main import preview_center_state_reconciliation
+
+        s=self.SessionLocal()
+
+        preview=preview_center_state_reconciliation(s,self.a_id)
+
+        self.assertEqual(preview["center_id"],self.a_id)
+        self.assertEqual(preview["machines_to_create"],["Infinity"])
+        self.assertEqual(preview["machines_to_update"],[])
+        self.assertEqual(preview["history_rows_to_create"],3)
+        self.assertEqual(preview["history_rows_to_update"],0)
+
+        # Preview must not modify canonical tables.
+        self.assertEqual(s.query(Machine).count(),0)
+        self.assertEqual(s.query(DailyHistory).count(),0)
+
+        s.close()
+
+    def test_06_preview_after_reconcile_reports_existing_rows(self):
+        from app.models import Machine,DailyHistory
+        from app.main import preview_center_state_reconciliation
+
+        s=self.SessionLocal()
+
+        self.reconcile(s,self.a_id)
+
+        machine_count_before=s.query(Machine).count()
+        history_count_before=s.query(DailyHistory).count()
+
+        preview=preview_center_state_reconciliation(s,self.a_id)
+
+        self.assertEqual(preview["machines_to_create"],[])
+        self.assertEqual(preview["machines_to_update"],["Infinity"])
+        self.assertEqual(preview["history_rows_to_create"],0)
+        self.assertEqual(preview["history_rows_to_update"],3)
+
+        # Preview itself must still be read-only.
+        self.assertEqual(s.query(Machine).count(),machine_count_before)
+        self.assertEqual(s.query(DailyHistory).count(),history_count_before)
+
+        s.close()
 
 if __name__=="__main__":
     unittest.main()

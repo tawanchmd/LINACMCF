@@ -499,6 +499,87 @@ def _json_obj(v):
     try: return json.loads(v)
     except Exception: return {}
 
+def preview_center_state_reconciliation(s:Session,center_id:int):
+    """Preview CenterState -> canonical reconciliation without writing."""
+    st=s.scalar(
+        select(CenterState).where(CenterState.center_id==center_id)
+    )
+    if not st:
+        return {
+            "center_id":center_id,
+            "machines_to_create":[],
+            "machines_to_update":[],
+            "history_rows_to_create":0,
+            "history_rows_to_update":0
+        }
+
+    payload=_state_obj(st)
+    ms=_json_obj(payload.get("machines"))
+    histories=payload.get("histories") or {}
+
+    result={
+        "center_id":center_id,
+        "machines_to_create":[],
+        "machines_to_update":[],
+        "history_rows_to_create":0,
+        "history_rows_to_update":0
+    }
+
+    for mk,m in ms.items():
+        if not isinstance(m,dict):
+            continue
+
+        if str(m.get("centerKey") or "").strip().lower() != \
+           str(mk).split("|",1)[0].strip().lower():
+            continue
+
+        name=str(m.get("machine") or "").strip()
+        if not name:
+            continue
+
+        machine=s.scalar(
+            select(Machine).where(
+                Machine.center_id==center_id,
+                Machine.name==name
+            )
+        )
+
+        if machine is None:
+            result["machines_to_create"].append(name)
+        else:
+            result["machines_to_update"].append(name)
+
+        h=_json_obj(histories.get("histDaily|"+mk))
+
+        for day,v in h.items():
+            if not isinstance(v,dict):
+                continue
+
+            try:
+                d=date.fromisoformat(day)
+                int(v.get("newPatients") or 0)
+                int(v.get("activePatients") or 0)
+            except (ValueError,TypeError):
+                continue
+
+            if machine is None:
+                result["history_rows_to_create"]+=1
+                continue
+
+            row=s.scalar(
+                select(DailyHistory).where(
+                    DailyHistory.machine_id==machine.id,
+                    DailyHistory.date==d
+                )
+            )
+
+            if row is None:
+                result["history_rows_to_create"]+=1
+            else:
+                result["history_rows_to_update"]+=1
+
+    return result
+
 def reconcile_center_state_to_canonical(s:Session,center_id:int):
     """Upsert canonical Machine/DailyHistory rows from one CenterState.
     Safe to run repeatedly. Does not delete canonical rows.
